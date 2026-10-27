@@ -1,0 +1,46 @@
+# PROGRESS.md
+
+알꾼이 백엔드의 진행 상황이다. **작업을 마칠 때마다 갱신한다.**
+가장 최근 내용이 위에 오도록 "작업 로그"에 추가하고, "지금 상태"와 "다음 할 일"을 고친다.
+
+## 지금 상태
+
+- **단계:** 1주차 시작. 스파이크 완료, 외부 OAuth 설정 완료, 백엔드 레포 생성 직전.
+- **진행 중:** IntelliJ Spring Boot 제너레이터로 `alkkuni-backend` 프로젝트 생성 (단일 모듈로 생성 후 멀티 모듈로 전환 예정)
+
+## 다음 할 일
+
+1. 단일 모듈 프로젝트를 `core` / `api` / `batch` 멀티 모듈로 전환 (루트 `settings.gradle.kts`, 공통 설정, 모듈별 `build.gradle.kts`)
+2. 로컬 PostgreSQL용 `compose.yaml`, `.env.example`, `.gitignore` 정리
+3. Flyway 첫 마이그레이션과 `/actuator/health` 확인
+4. GitHub 레포 생성, GitHub Actions CI (테스트·빌드)
+5. ECR 푸시까지 CI 확장 → EC2 기본 배포
+
+## 완료
+
+- [x] 서비스 주제 확정과 경쟁 서비스 조사 (2026-10-26)
+- [x] 노션 설계 문서 v0.1, ADR-001~009 작성 (2026-10-26)
+- [x] 데이터 스파이크 완료 (2026-10-27): 함량 추출률 80.8%, 정확도 78.5%, CHNG_DT 동작 확인, 회수 데이터 성격 확인, 상업 이용 조건 확인
+- [x] 카카오 디벨로퍼스: 앱 생성("알꾼이"), 개인 개발자 비즈 앱 전환, 로그인 ON, 이메일 필수·닉네임 선택 동의, 로컬 리다이렉트 URI (2026-10-27)
+- [x] 구글 OAuth: 프로젝트 `alkkuni`, 외부·테스트 중, 테스트 사용자 1명, 범위 `openid`·`email`·`profile`, 로컬 리디렉션 URI (2026-10-27)
+- [x] 네이버 로그인: 앱 등록, 이메일 필수·별명, 로컬 Callback URL (2026-10-27)
+
+## 미해결 질문
+
+- [ ] 2GB 메모리로 컨테이너 4개 운영이 가능한가 (구현 초기 실측)
+- [ ] 소셜 계정 연결 정책 (같은 이메일 자동 병합 여부, MVP는 병합 안 함)
+- [ ] 인앱 브라우저 소셜 로그인 대응 방식
+- [ ] LLM 정규화의 사용 범위와 월 비용 상한
+- [ ] CHNG_DT로 삭제된 품목이 어떻게 보이는지 (전체 대사로 대응)
+- [ ] 쿠팡 파트너스 최종 승인 기간 제한
+- [ ] 서비스 이름 표기 통일: 노션 문서의 "알꾼" → "알꾼이"로 바꿀지
+- [ ] 상표(KIPRIS)와 도메인 확보
+
+## 작업 로그
+
+### 2026-10-27
+- 스파이크 마무리: 200개 정확도 검수, 회수 데이터 성격(소비기한이 남은 목록) 확인, CHNG_DT 동작 테스트, 상업 이용 조건 확인. 노션 보고서에 한 줄 결론과 "한눈에 보기" 표 추가.
+- 카카오·네이버·구글 로컬 개발용 OAuth 설정 완료. 웹훅·운영 URI·검수 요청은 배포 후로 미룸 (노션 "출시 준비 체크리스트").
+- IntelliJ 프로젝트 설정 결정: Spring Boot 제너레이터, Kotlin, Gradle - Kotlin, 그룹·패키지 `com.alkkuni`, Java 21, Jar, YAML.
+  초기 의존성: Spring Web, Spring Data JPA, PostgreSQL Driver, Flyway Migration, Validation, Actuator. Security·OAuth2 Client는 로그인 단계에서 추가.
+- Claude Code 협업용 `CLAUDE.md`, `docs/PLANNING.md`, `docs/PROGRESS.md` 작성.
