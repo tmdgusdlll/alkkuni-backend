@@ -12,6 +12,9 @@
 
 1. 멀티 모듈 전환 PR 머지
 2. 로컬 PostgreSQL용 `compose.yaml`, `.env.example` 정리
+   - api·batch 설정 yaml을 공통 `application.yaml` / `application-local.yaml` / `application-prod.yaml`로 분리. 기본 프로필은 `local`, 운영은 `SPRING_PROFILES_ACTIVE=prod`
+   - 비밀값은 yaml에 넣지 않는다. local은 `.env`에서, prod는 환경변수(Parameter Store)에서 `${...}`로 읽는다. 테스트용 yaml은 만들지 않음(Testcontainers `@ServiceConnection` 사용)
+   - 정할 것: `.env`를 Spring이 읽는 방법(`spring.config.import: optional:file:.env[.properties]` 후보, `bootRun` 작업 디렉터리가 모듈 폴더라 경로 확인 필요)
 3. Flyway 첫 마이그레이션과 `/actuator/health` 확인. Testcontainers(PostgreSQL)로 `api` 컨텍스트 테스트 추가 (core 엔티티·리포지토리 스캔 설정도 이때 검증)
 4. GitHub Actions CI (build + test, `setup-java`로 JDK 21 지정) + 브랜치 보호에 CI 체크 통과·대화 해결 필수 추가
 5. CodeRabbit 연결과 `.coderabbit.yaml`, `/install-github-app`으로 `@claude` 질문용 연결
