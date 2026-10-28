@@ -5,22 +5,24 @@
 
 ## 지금 상태
 
-- **단계:** 1주차 시작. 스파이크 완료, 외부 OAuth 설정 완료, 백엔드 레포 생성 직전.
-- **진행 중:** IntelliJ Spring Boot 제너레이터로 `alkkuni-backend` 프로젝트 생성 (단일 모듈로 생성 후 멀티 모듈로 전환 예정)
+- **단계:** 1주차. 레포 골격을 `core` / `api` / `batch` 멀티 모듈로 전환함 (브랜치 `chore/multi-module`).
+- **진행 중:** 멀티 모듈 전환 PR. 테스트가 하나도 없는 상태이며, 다음 할 일 3번에서 컨텍스트 테스트를 다시 만든다.
 
 ## 다음 할 일
 
-1. 리뷰 문서 반영: `REVIEW.md`, `.github/pull_request_template.md`, `CLAUDE.md`·`PLANNING.md` 갱신 (이번 커밋)
-2. 단일 모듈 프로젝트를 `core` / `api` / `batch` 멀티 모듈로 전환 (첫 브랜치 + PR로 진행)
-3. 로컬 PostgreSQL용 `compose.yaml`, `.env.example` 정리
-4. Flyway 첫 마이그레이션과 `/actuator/health` 확인
-5. GitHub Actions CI (build + test) + 브랜치 보호 (체크 통과·대화 해결 필수, 승인 0명, Squash 머지)
-6. CodeRabbit 연결과 `.coderabbit.yaml`, `/install-github-app`으로 `@claude` 질문용 연결
-7. ECR 푸시까지 CI 확장 → EC2 기본 배포
-8. (2주차) 스파이크 검수 200개로 파서 골든 테스트
+1. 멀티 모듈 전환 PR 머지
+2. 로컬 PostgreSQL용 `compose.yaml`, `.env.example` 정리
+3. Flyway 첫 마이그레이션과 `/actuator/health` 확인. Testcontainers(PostgreSQL)로 `api` 컨텍스트 테스트 추가 (core 엔티티·리포지토리 스캔 설정도 이때 검증)
+4. GitHub Actions CI (build + test, `setup-java`로 JDK 21 지정) + 브랜치 보호에 CI 체크 통과·대화 해결 필수 추가
+5. CodeRabbit 연결과 `.coderabbit.yaml`, `/install-github-app`으로 `@claude` 질문용 연결
+6. ECR 푸시까지 CI 확장 → EC2 기본 배포
+7. (2주차) 스파이크 검수 200개로 파서 골든 테스트
 
 ## 완료
 
+- [x] 리뷰 문서 반영: `REVIEW.md`, PR 템플릿, `CLAUDE.md`·`PLANNING.md` 갱신 (2026-10-28)
+- [x] `core` / `api` / `batch` 멀티 모듈 전환, Java toolchain 17 → 21 (2026-10-28)
+- [x] `main` 브랜치 보호: PR 필수(승인 0명), 관리자에게도 적용, 강제 푸시·삭제 금지 (2026-10-28)
 - [x] 서비스 주제 확정과 경쟁 서비스 조사 (2026-10-26)
 - [x] 노션 설계 문서 v0.1, ADR-001~009 작성 (2026-10-26)
 - [x] 데이터 스파이크 완료 (2026-10-27): 함량 추출률 80.8%, 정확도 78.5%, CHNG_DT 동작 확인, 회수 데이터 성격 확인, 상업 이용 조건 확인
@@ -52,3 +54,13 @@
 ### 2026-10-28
 - 리뷰 구조 확정: 로컬 Claude `/code-review` + `REVIEW.md`, PR은 CI + CodeRabbit, 위험 경로는 `/security-review`와 직접 정독, 파서는 골든 테스트. (`PLANNING.md` "리뷰 구조")
 - `REVIEW.md` 작성·검토, PR 템플릿 작성, `CLAUDE.md`에 브랜치 + PR 규칙, 빌드 결과 보고, `REVIEW.md` 연결 규칙 추가.
+- 멀티 모듈 전환 (`chore/multi-module`)
+  - 루트 `build.gradle.kts`는 플러그인 버전(`apply false`)과 공통 설정(`subprojects`)만 둔다. buildSrc·버전 카탈로그는 아직 쓰지 않음.
+  - `core`: Boot 플러그인 없는 라이브러리. `spring-boot-starter-data-jpa`를 `api`로 노출, `kotlin-jpa`·`allOpen` 설정.
+  - `api`: Boot 앱(`com.alkkuni.AlkkuniApiApplication`), web·actuator·validation·Flyway. `batch`: Boot 앱 골격만 둠(Spring Batch 도입 여부는 2주차에 결정).
+  - 메인 클래스는 모듈 패키지가 아니라 최상위 `com.alkkuni`에 둔다. 기본 스캔 범위가 메인 클래스 패키지 아래라서, 이렇게 해야 `scanBasePackages`·`@EntityScan`·`@EnableJpaRepositories` 없이 core까지 스캔된다.
+  - Java toolchain을 생성 시 값 17에서 문서대로 21로 맞춤.
+  - 생성기가 만든 `contextLoads` 테스트 삭제: DB 설정이 없어 `main`에서도 실패하던 테스트. Testcontainers 컨텍스트 테스트로 대체 예정(다음 할 일 3번).
+- `gh` CLI 설치·로그인, PR #1 생성.
+- `main` 브랜치 보호 설정(PR 필수, 승인 0명, 관리자 포함). CI 체크 필수는 CI를 만든 뒤 추가.
+- 머지 방식 결정: Squash 대신 일반 머지. 리뷰 반영·수정 커밋까지 `main`에 남겨 작업 과정을 본다. (`PLANNING.md` "리뷰 구조")
