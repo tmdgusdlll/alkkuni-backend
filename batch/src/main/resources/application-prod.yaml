@@ -1,0 +1,4 @@
+# 운영용. 값은 모두 환경변수(Parameter Store)로 주입한다.
+spring:
+  datasource:
+    url: ${DB_URL}
