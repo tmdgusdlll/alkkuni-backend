@@ -31,6 +31,7 @@
 | `batch` | 공공데이터 수집, 정규화, 회수 감지 | `core` |
 
 패키지 뿌리는 `com.alkkuni`, 모듈별로 `com.alkkuni.core`, `com.alkkuni.api`, `com.alkkuni.batch`.
+단, `api`·`batch`의 메인 클래스(`@SpringBootApplication`)만 예외로 `com.alkkuni`에 둔다. 기본 스캔 범위가 메인 클래스 패키지 아래라서, 모듈 패키지로 옮기면 core의 빈·엔티티·리포지토리를 찾지 못한다.
 `core`는 DTO나 웹 계층을 알면 안 된다. Entity → DTO 변환은 `api` 모듈의 확장 함수로 한다.
 
 ## 코드 규칙
