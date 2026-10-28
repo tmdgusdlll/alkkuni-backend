@@ -32,6 +32,8 @@
 4. ECR 푸시 → EC2 기본 배포
    - 정할 것: Dockerfile 방식(Boot `bootBuildImage` vs 직접 작성), OIDC IAM 역할 범위
    - 검증: EC2에서 `/actuator/health` UP
+   - 확인: 운영 compose(또는 Dockerfile)에 `SPRING_PROFILES_ACTIVE=prod` 지정. 공통 yaml의 기본 프로필이 `local`이라 빠지면 `localhost` DB로 접속을 시도한다
+   - 확인: 운영 DB 비밀번호는 새로 생성해 Parameter Store에 둔다. `.env.example` 값은 로컬 전용 예시
 5. (2주차) 스파이크 검수 200개로 파서 골든 테스트
 
 ## 완료
@@ -77,6 +79,8 @@
   - 루트 `compose.yaml`에 `db`(postgres:17, 127.0.0.1:5432만 노출, named volume, healthcheck). 계정은 `.env`의 `DB_NAME`·`DB_USERNAME`·`DB_PASSWORD`.
   - yaml: 공통에 `spring.profiles.default: local`과 `username`·`password`(`${...}`), local은 `localhost` URL, prod는 `${DB_URL}`.
   - `.env` 읽기: local 프로필에서 `spring.config.import: optional:file:.env[.properties]`, `bootRun`의 작업 디렉터리를 레포 루트로 맞춤. IntelliJ 실행 구성도 작업 디렉터리를 루트로 둬야 한다.
+  - 주의: `workingDir` 변경은 `.env`뿐 아니라 앱의 모든 상대 경로에 적용된다. `bootRun`은 루트 기준, jar·테스트는 모듈 기준이 되므로 상대 경로 파일을 쓰게 되면 다시 검토한다.
+  - `/code-review` 반영: `spring-boot-docker-compose`로 바꾸자는 제안은 앱 실행과 DB 관리를 분리하려고 채택하지 않음. `profiles.default: local`과 `.env.example` 예시 비밀번호는 위험이 낮아 유지하고, 운영 배포 때 확인할 항목으로 다음 할 일 4번에 옮김.
   - batch에는 Flyway 의존성이 없어 따로 끌 설정이 없다(마이그레이션은 api만).
   - 확인: `:api:bootRun` → `/actuator/health` UP(PostgreSQL 17.11 연결), `:batch:bootRun` 기동, `./gradlew build` 성공.
 
