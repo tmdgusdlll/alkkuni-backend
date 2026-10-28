@@ -1,0 +1,6 @@
+# 로컬 개발용. 접속 정보는 루트 .env에서 읽는다(bootRun 작업 디렉터리를 루트로 맞춰 둠).
+spring:
+  config:
+    import: optional:file:.env[.properties]
+  datasource:
+    url: jdbc:postgresql://localhost:5432/${DB_NAME}
