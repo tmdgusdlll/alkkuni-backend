@@ -13,7 +13,7 @@
 1. 멀티 모듈 전환 PR 머지
 2. 로컬 PostgreSQL용 `compose.yaml`, `.env.example` 정리
 3. Flyway 첫 마이그레이션과 `/actuator/health` 확인. Testcontainers(PostgreSQL)로 `api` 컨텍스트 테스트 추가 (core 엔티티·리포지토리 스캔 설정도 이때 검증)
-4. GitHub Actions CI (build + test, `setup-java`로 JDK 21 지정) + 브랜치 보호 (체크 통과·대화 해결 필수, 승인 0명, Squash 머지)
+4. GitHub Actions CI (build + test, `setup-java`로 JDK 21 지정) + 브랜치 보호에 CI 체크 통과·대화 해결 필수 추가
 5. CodeRabbit 연결과 `.coderabbit.yaml`, `/install-github-app`으로 `@claude` 질문용 연결
 6. ECR 푸시까지 CI 확장 → EC2 기본 배포
 7. (2주차) 스파이크 검수 200개로 파서 골든 테스트
@@ -22,6 +22,7 @@
 
 - [x] 리뷰 문서 반영: `REVIEW.md`, PR 템플릿, `CLAUDE.md`·`PLANNING.md` 갱신 (2026-10-28)
 - [x] `core` / `api` / `batch` 멀티 모듈 전환, Java toolchain 17 → 21 (2026-10-28)
+- [x] `main` 브랜치 보호: PR 필수(승인 0명), 관리자에게도 적용, 강제 푸시·삭제 금지 (2026-10-28)
 - [x] 서비스 주제 확정과 경쟁 서비스 조사 (2026-10-26)
 - [x] 노션 설계 문서 v0.1, ADR-001~009 작성 (2026-10-26)
 - [x] 데이터 스파이크 완료 (2026-10-27): 함량 추출률 80.8%, 정확도 78.5%, CHNG_DT 동작 확인, 회수 데이터 성격 확인, 상업 이용 조건 확인
@@ -60,3 +61,6 @@
   - 메인 클래스는 모듈 패키지가 아니라 최상위 `com.alkkuni`에 둔다. 기본 스캔 범위가 메인 클래스 패키지 아래라서, 이렇게 해야 `scanBasePackages`·`@EntityScan`·`@EnableJpaRepositories` 없이 core까지 스캔된다.
   - Java toolchain을 생성 시 값 17에서 문서대로 21로 맞춤.
   - 생성기가 만든 `contextLoads` 테스트 삭제: DB 설정이 없어 `main`에서도 실패하던 테스트. Testcontainers 컨텍스트 테스트로 대체 예정(다음 할 일 3번).
+- `gh` CLI 설치·로그인, PR #1 생성.
+- `main` 브랜치 보호 설정(PR 필수, 승인 0명, 관리자 포함). CI 체크 필수는 CI를 만든 뒤 추가.
+- 머지 방식 결정: Squash 대신 일반 머지. 리뷰 반영·수정 커밋까지 `main`에 남겨 작업 과정을 본다. (`PLANNING.md` "리뷰 구조")
