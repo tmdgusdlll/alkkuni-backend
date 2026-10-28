@@ -5,26 +5,25 @@
 
 ## 지금 상태
 
-- **단계:** 1주차. 레포 골격을 `core` / `api` / `batch` 멀티 모듈로 전환함 (브랜치 `chore/multi-module`).
-- **진행 중:** 멀티 모듈 전환 PR. 테스트가 하나도 없는 상태이며, 다음 할 일 3번에서 컨텍스트 테스트를 다시 만든다.
+- **단계:** 1주차. `core` / `api` / `batch` 멀티 모듈 전환 머지 완료 (PR #1).
+- **진행 중:** 로컬 DB(compose)와 yaml 공통/local/prod 분리 (브랜치 `chore/local-db`). 테스트가 하나도 없는 상태이며, 다음 할 일 2번에서 컨텍스트 테스트를 다시 만든다.
 
 ## 다음 할 일
 
-1. 멀티 모듈 전환 PR 머지
-2. 로컬 PostgreSQL용 `compose.yaml`, `.env.example` 정리
+1. 로컬 PostgreSQL용 `compose.yaml`, `.env.example` 정리
    - api·batch 설정 yaml을 공통 `application.yaml` / `application-local.yaml` / `application-prod.yaml`로 분리. 기본 프로필은 `local`, 운영은 `SPRING_PROFILES_ACTIVE=prod`
    - 비밀값은 yaml에 넣지 않는다. local은 `.env`에서, prod는 환경변수(Parameter Store)에서 `${...}`로 읽는다. 테스트용 yaml은 만들지 않음(Testcontainers `@ServiceConnection` 사용)
    - 정할 것: `.env`를 Spring이 읽는 방법(`spring.config.import: optional:file:.env[.properties]` 후보, `bootRun` 작업 디렉터리가 모듈 폴더라 경로 확인 필요)
-3. Flyway 첫 마이그레이션과 `/actuator/health` 확인. Testcontainers(PostgreSQL)로 `api` 컨텍스트 테스트 추가 (core 엔티티·리포지토리 스캔 설정도 이때 검증)
-4. GitHub Actions CI (build + test, `setup-java`로 JDK 21 지정) + 브랜치 보호에 CI 체크 통과·대화 해결 필수 추가
-5. CodeRabbit 연결과 `.coderabbit.yaml`, `/install-github-app`으로 `@claude` 질문용 연결
-6. ECR 푸시까지 CI 확장 → EC2 기본 배포
-7. (2주차) 스파이크 검수 200개로 파서 골든 테스트
+2. Flyway 첫 마이그레이션과 `/actuator/health` 확인. Testcontainers(PostgreSQL)로 `api` 컨텍스트 테스트 추가 (core 엔티티·리포지토리 스캔 설정도 이때 검증)
+3. GitHub Actions CI (build + test, `setup-java`로 JDK 21 지정) + 브랜치 보호에 CI 체크 통과·대화 해결 필수 추가
+4. CodeRabbit 연결과 `.coderabbit.yaml`, `/install-github-app`으로 `@claude` 질문용 연결
+5. ECR 푸시까지 CI 확장 → EC2 기본 배포
+6. (2주차) 스파이크 검수 200개로 파서 골든 테스트
 
 ## 완료
 
 - [x] 리뷰 문서 반영: `REVIEW.md`, PR 템플릿, `CLAUDE.md`·`PLANNING.md` 갱신 (2026-10-28)
-- [x] `core` / `api` / `batch` 멀티 모듈 전환, Java toolchain 17 → 21 (2026-10-28)
+- [x] `core` / `api` / `batch` 멀티 모듈 전환, Java toolchain 17 → 21, PR #1 머지 (2026-10-28)
 - [x] `main` 브랜치 보호: PR 필수(승인 0명), 관리자에게도 적용, 강제 푸시·삭제 금지 (2026-10-28)
 - [x] 서비스 주제 확정과 경쟁 서비스 조사 (2026-10-26)
 - [x] 노션 설계 문서 v0.1, ADR-001~009 작성 (2026-10-26)
@@ -63,7 +62,7 @@
   - `api`: Boot 앱(`com.alkkuni.AlkkuniApiApplication`), web·actuator·validation·Flyway. `batch`: Boot 앱 골격만 둠(Spring Batch 도입 여부는 2주차에 결정).
   - 메인 클래스는 모듈 패키지가 아니라 최상위 `com.alkkuni`에 둔다. 기본 스캔 범위가 메인 클래스 패키지 아래라서, 이렇게 해야 `scanBasePackages`·`@EntityScan`·`@EnableJpaRepositories` 없이 core까지 스캔된다.
   - Java toolchain을 생성 시 값 17에서 문서대로 21로 맞춤.
-  - 생성기가 만든 `contextLoads` 테스트 삭제: DB 설정이 없어 `main`에서도 실패하던 테스트. Testcontainers 컨텍스트 테스트로 대체 예정(다음 할 일 3번).
+  - 생성기가 만든 `contextLoads` 테스트 삭제: DB 설정이 없어 `main`에서도 실패하던 테스트. Testcontainers 컨텍스트 테스트로 대체 예정(다음 할 일의 Flyway·Testcontainers 항목).
 - `gh` CLI 설치·로그인, PR #1 생성.
 - `main` 브랜치 보호 설정(PR 필수, 승인 0명, 관리자 포함). CI 체크 필수는 CI를 만든 뒤 추가.
 - 머지 방식 결정: Squash 대신 일반 머지. 리뷰 반영·수정 커밋까지 `main`에 남겨 작업 과정을 본다. (`PLANNING.md` "리뷰 구조")
