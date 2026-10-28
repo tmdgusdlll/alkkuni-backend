@@ -1,19 +1,37 @@
 # PROGRESS.md
 
 알꾼이 백엔드의 진행 상황이다. **작업을 마칠 때마다 갱신한다.**
-가장 최근 내용이 위에 오도록 "작업 로그"에 추가하고, "지금 상태"와 "다음 할 일"을 고친다.
+
+- 지금 상태: 이번 주차 목차. 체크 안 된 첫 항목이 다음 작업이다. PR이 머지되면 체크한다.
+- 다음 할 일: 항목별로 정할 것과 검증 기준. 끝난 항목은 지우고 "완료"에 날짜와 함께 옮긴다.
+- 작업 로그: 결정과 그 이유. 최근 날짜가 위에 온다.
 
 ## 지금 상태
 
-- **단계:** 1주차. `core` / `api` / `batch` 멀티 모듈 전환 머지 완료 (PR #1).
-- **진행 중:** 로컬 DB(compose)와 yaml 분리 PR 리뷰·머지 대기 (브랜치 `chore/local-db`). 테스트가 하나도 없는 상태이며, 다음 할 일 1번에서 컨텍스트 테스트를 다시 만든다.
+### 1주차 체크리스트 — 백엔드 레포 골격과 기본 배포
+
+- [x] `core` / `api` / `batch` 멀티 모듈 (PR #1)
+- [x] 로컬 PostgreSQL compose, yaml 공통/local/prod 분리 (PR #2)
+- [ ] Flyway 첫 마이그레이션 + Testcontainers 컨텍스트 테스트
+- [ ] GitHub Actions CI, 브랜치 보호에 CI 필수
+- [ ] CodeRabbit·`@claude` 연결
+- [ ] ECR 푸시 → EC2 기본 배포
 
 ## 다음 할 일
 
-1. Flyway 첫 마이그레이션과 `/actuator/health` 확인. Testcontainers(PostgreSQL)로 `api` 컨텍스트 테스트 추가 (core 엔티티·리포지토리 스캔 설정도 이때 검증)
-2. GitHub Actions CI (build + test, `setup-java`로 JDK 21 지정) + 브랜치 보호에 CI 체크 통과·대화 해결 필수 추가
-3. CodeRabbit 연결과 `.coderabbit.yaml`, `/install-github-app`으로 `@claude` 질문용 연결
-4. ECR 푸시까지 CI 확장 → EC2 기본 배포
+1. Flyway 첫 마이그레이션 + Testcontainers 컨텍스트 테스트
+   - 정할 것: `V1`에 무엇을 넣을지. 비워 두기 vs `pg_trgm` 확장만 (검색용, ADR-003)
+   - 할 것: `api`에 `@ServiceConnection` PostgreSQL 컨텍스트 테스트
+   - 검증: 테스트 안에서 Flyway 적용, core 스캔, `/actuator/health` UP. `./gradlew build`에 테스트 1개 이상
+2. GitHub Actions CI
+   - 할 것: build + test, `setup-java`로 JDK 21. Testcontainers가 러너의 Docker로 도는지 확인
+   - 검증: PR에서 CI 통과 → 브랜치 보호에 CI 체크 통과·대화 해결 필수 추가
+3. CodeRabbit·`@claude` 연결
+   - 할 것: CodeRabbit 앱 설치와 `.coderabbit.yaml`, `/install-github-app`으로 `@claude` 연결 (자동 실행 안 함)
+   - 검증: 테스트 PR에서 `@coderabbitai review`, `@claude` 응답 확인
+4. ECR 푸시 → EC2 기본 배포
+   - 정할 것: Dockerfile 방식(Boot `bootBuildImage` vs 직접 작성), OIDC IAM 역할 범위
+   - 검증: EC2에서 `/actuator/health` UP
 5. (2주차) 스파이크 검수 200개로 파서 골든 테스트
 
 ## 완료
@@ -42,14 +60,6 @@
 
 ## 작업 로그
 
-### 2026-10-27
-- 스파이크 마무리: 200개 정확도 검수, 회수 데이터 성격(소비기한이 남은 목록) 확인, CHNG_DT 동작 테스트, 상업 이용 조건 확인. 노션 보고서에 한 줄 결론과 "한눈에 보기" 표 추가.
-- 카카오·네이버·구글 로컬 개발용 OAuth 설정 완료. 웹훅·운영 URI·검수 요청은 배포 후로 미룸 (노션 "출시 준비 체크리스트").
-- IntelliJ 프로젝트 설정 결정: Spring Boot 제너레이터, Kotlin, Gradle - Kotlin, 그룹·패키지 `com.alkkuni`, Java 21, Jar, YAML.
-  초기 의존성: Spring Web, Spring Data JPA, PostgreSQL Driver, Flyway Migration, Validation, Actuator. Security·OAuth2 Client는 로그인 단계에서 추가.
-- Claude Code 협업용 `CLAUDE.md`, `docs/PLANNING.md`, `docs/PROGRESS.md` 작성.
-- GitHub 레포 `alkkuni-backend` 생성, 첫 커밋 푸시.
-
 ### 2026-10-28
 - 리뷰 구조 확정: 로컬 Claude `/code-review` + `REVIEW.md`, PR은 CI + CodeRabbit, 위험 경로는 `/security-review`와 직접 정독, 파서는 골든 테스트. (`PLANNING.md` "리뷰 구조")
 - `REVIEW.md` 작성·검토, PR 템플릿 작성, `CLAUDE.md`에 브랜치 + PR 규칙, 빌드 결과 보고, `REVIEW.md` 연결 규칙 추가.
@@ -69,3 +79,11 @@
   - `.env` 읽기: local 프로필에서 `spring.config.import: optional:file:.env[.properties]`, `bootRun`의 작업 디렉터리를 레포 루트로 맞춤. IntelliJ 실행 구성도 작업 디렉터리를 루트로 둬야 한다.
   - batch에는 Flyway 의존성이 없어 따로 끌 설정이 없다(마이그레이션은 api만).
   - 확인: `:api:bootRun` → `/actuator/health` UP(PostgreSQL 17.11 연결), `:batch:bootRun` 기동, `./gradlew build` 성공.
+
+### 2026-10-27
+- 스파이크 마무리: 200개 정확도 검수, 회수 데이터 성격(소비기한이 남은 목록) 확인, CHNG_DT 동작 테스트, 상업 이용 조건 확인. 노션 보고서에 한 줄 결론과 "한눈에 보기" 표 추가.
+- 카카오·네이버·구글 로컬 개발용 OAuth 설정 완료. 웹훅·운영 URI·검수 요청은 배포 후로 미룸 (노션 "출시 준비 체크리스트").
+- IntelliJ 프로젝트 설정 결정: Spring Boot 제너레이터, Kotlin, Gradle - Kotlin, 그룹·패키지 `com.alkkuni`, Java 21, Jar, YAML.
+  초기 의존성: Spring Web, Spring Data JPA, PostgreSQL Driver, Flyway Migration, Validation, Actuator. Security·OAuth2 Client는 로그인 단계에서 추가.
+- Claude Code 협업용 `CLAUDE.md`, `docs/PLANNING.md`, `docs/PROGRESS.md` 작성.
+- GitHub 레포 `alkkuni-backend` 생성, 첫 커밋 푸시.
