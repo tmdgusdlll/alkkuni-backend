@@ -10,11 +10,14 @@
 
 ## 다음 할 일
 
-1. 단일 모듈 프로젝트를 `core` / `api` / `batch` 멀티 모듈로 전환 (루트 `settings.gradle.kts`, 공통 설정, 모듈별 `build.gradle.kts`)
-2. 로컬 PostgreSQL용 `compose.yaml`, `.env.example`, `.gitignore` 정리
-3. Flyway 첫 마이그레이션과 `/actuator/health` 확인
-4. GitHub 레포 생성, GitHub Actions CI (테스트·빌드)
-5. ECR 푸시까지 CI 확장 → EC2 기본 배포
+1. 리뷰 문서 반영: `REVIEW.md`, `.github/pull_request_template.md`, `CLAUDE.md`·`PLANNING.md` 갱신 (이번 커밋)
+2. 단일 모듈 프로젝트를 `core` / `api` / `batch` 멀티 모듈로 전환 (첫 브랜치 + PR로 진행)
+3. 로컬 PostgreSQL용 `compose.yaml`, `.env.example` 정리
+4. Flyway 첫 마이그레이션과 `/actuator/health` 확인
+5. GitHub Actions CI (build + test) + 브랜치 보호 (체크 통과·대화 해결 필수, 승인 0명, Squash 머지)
+6. CodeRabbit 연결과 `.coderabbit.yaml`, `/install-github-app`으로 `@claude` 질문용 연결
+7. ECR 푸시까지 CI 확장 → EC2 기본 배포
+8. (2주차) 스파이크 검수 200개로 파서 골든 테스트
 
 ## 완료
 
@@ -44,3 +47,8 @@
 - IntelliJ 프로젝트 설정 결정: Spring Boot 제너레이터, Kotlin, Gradle - Kotlin, 그룹·패키지 `com.alkkuni`, Java 21, Jar, YAML.
   초기 의존성: Spring Web, Spring Data JPA, PostgreSQL Driver, Flyway Migration, Validation, Actuator. Security·OAuth2 Client는 로그인 단계에서 추가.
 - Claude Code 협업용 `CLAUDE.md`, `docs/PLANNING.md`, `docs/PROGRESS.md` 작성.
+- GitHub 레포 `alkkuni-backend` 생성, 첫 커밋 푸시.
+
+### 2026-10-28
+- 리뷰 구조 확정: 로컬 Claude `/code-review` + `REVIEW.md`, PR은 CI + CodeRabbit, 위험 경로는 `/security-review`와 직접 정독, 파서는 골든 테스트. (`PLANNING.md` "리뷰 구조")
+- `REVIEW.md` 작성·검토, PR 템플릿 작성, `CLAUDE.md`에 브랜치 + PR 규칙, 빌드 결과 보고, `REVIEW.md` 연결 규칙 추가.

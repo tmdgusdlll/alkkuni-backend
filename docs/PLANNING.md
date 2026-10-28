@@ -123,6 +123,24 @@
 - CI/CD 단계: (1) 테스트·빌드·ECR 푸시 → (2) SSM으로 교체 → (3) 헬스 체크(`/actuator/health`) 실패 시 직전 태그로 자동 롤백.
 - 컨테이너별 `mem_limit`, JVM 힙 크기 조정. 2GB가 부족하면 t4g.medium 검토.
 
+## 리뷰 구조
+
+원칙: 틀리면 안 되는 건 테스트로 막고, 도메인 규칙은 로컬 Claude가, 넓은 시야는 PR의 CodeRabbit이, 위험한 곳은 사람이 본다.
+
+| 단계 | 누가 | 언제 |
+|---|---|---|
+| 빌드·테스트 | `./gradlew build` (파서 골든 테스트 포함) | 로컬, 모든 PR |
+| 도메인 리뷰 | Claude `/code-review` + `REVIEW.md` | 로컬, PR 올리기 전 |
+| 보안 리뷰 | Claude `/security-review` | 로컬, 인증·서랍·웹훅·외부 키를 건드린 PR |
+| 사람 정독 | 현이 | 위험도 "높음" PR, `REVIEW.md`의 "사람 정독 필요" 경로 |
+| CI | GitHub Actions (build + test) | PR, 머지 필수 조건 |
+| 교차 리뷰 | CodeRabbit (공개 레포 무료, 스타 10개 전에는 `@coderabbitai review`로 수동 요청) | PR |
+| 질문 | `@claude` (자동 실행 안 함) | 필요할 때 |
+
+- 머지 조건: CI 통과, 리뷰 댓글 전부 해결, 승인 0명(혼자라 셀프 승인 불가), Squash 머지.
+- 리뷰 댓글에는 "고침 / 오탐 / 의도됨"으로 답하고 닫는다. 반복되는 실수는 테스트로, 반복되는 오탐은 `REVIEW.md`·`.coderabbit.yaml`로 옮긴다.
+- 하지 않는 것: PR마다 Claude 자동 리뷰(CodeRabbit과 중복), `claude-code-security-review` 액션(API 요금 별도). lint는 스타일 지적이 리뷰를 어지럽히기 시작하면 추가.
+
 ## 마일스톤 (목표 4주, 2026-10-27 시작)
 
 | 주차 | 목표 |
