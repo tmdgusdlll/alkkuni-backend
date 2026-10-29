@@ -18,19 +18,15 @@
 
 ## 다음 할 일
 
-1. Flyway 첫 마이그레이션 + Testcontainers 컨텍스트 테스트
-   - 정할 것: `V1`에 무엇을 넣을지. 비워 두기 vs `pg_trgm` 확장만 (검색용, ADR-003)
-   - 할 것: `api`에 `@ServiceConnection` PostgreSQL 컨텍스트 테스트
-   - 검증: 테스트 안에서 Flyway 적용, core 스캔, `/actuator/health` UP. `./gradlew build`에 테스트 1개 이상
-2. GitHub Actions CI
+1. GitHub Actions CI
    - 할 것: build + test, `setup-java`로 JDK 21. Testcontainers가 러너의 Docker로 도는지 확인
    - 검증: PR에서 CI 통과 → 브랜치 보호에 CI 체크 통과·대화 해결 필수 추가
-3. CodeRabbit·`@claude` 연결
+2. CodeRabbit·`@claude` 연결
    - 할 것: CodeRabbit 앱 설치와 `.coderabbit.yaml`, `/install-github-app`으로 `@claude` 연결 (자동 실행 안 함)
    - 검증: 테스트 PR에서 `@coderabbitai review`, `@claude` 응답 확인
-4. (2주차) 스파이크 검수 200개로 파서 골든 테스트
-5. (2주차) 배포 준비: 도메인 확보, SES 샌드박스 해제·소셜 로그인 검수에 걸리는 기간 확인
-6. (3주차 첫 작업) ECR 푸시 → EC2 기본 배포. 배포가 처음 필요한 시점이 3주차 CloudFront라 미룸
+3. (2주차) 스파이크 검수 200개로 파서 골든 테스트
+4. (2주차) 배포 준비: 도메인 확보, SES 샌드박스 해제·소셜 로그인 검수에 걸리는 기간 확인
+5. (3주차 첫 작업) ECR 푸시 → EC2 기본 배포. 배포가 처음 필요한 시점이 3주차 CloudFront라 미룸
    - 정할 것: Dockerfile 방식(Boot `bootBuildImage` vs 직접 작성), OIDC IAM 역할 범위
    - 검증: EC2에서 `/actuator/health` UP
    - 확인: 운영 compose(또는 Dockerfile)에 `SPRING_PROFILES_ACTIVE=prod` 지정. 공통 yaml의 기본 프로필이 `local`이라 빠지면 `localhost` DB로 접속을 시도한다
@@ -38,6 +34,7 @@
 
 ## 완료
 
+- [x] Flyway `V1__enable_pg_trgm.sql`, Testcontainers 컨텍스트 테스트 3개 (2026-10-29)
 - [x] 로컬 PostgreSQL `compose.yaml`·`.env.example`, api·batch yaml 공통/local/prod 분리 (2026-10-28)
 - [x] 리뷰 문서 반영: `REVIEW.md`, PR 템플릿, `CLAUDE.md`·`PLANNING.md` 갱신 (2026-10-28)
 - [x] `core` / `api` / `batch` 멀티 모듈 전환, Java toolchain 17 → 21, PR #1 머지 (2026-10-28)
@@ -63,6 +60,10 @@
 ## 작업 로그
 
 ### 2026-10-29
+- Flyway·Testcontainers (`chore/flyway-testcontainers`)
+  - `V1`은 `pg_trgm` 확장만 넣음. 비워 두면 Flyway가 SQL을 적용하는지 테스트로 확인할 수 없고, 테이블은 ERD가 2주차 수집 결과로 바뀔 수 있어 엔티티를 만들 때 V2부터 넣는다.
+  - 컨텍스트 테스트(`postgres:17`, `@ServiceConnection`): Flyway V1 적용·`pg_trgm` 존재, 한글 trigram 생성, 헬스 UP. 테스트 작업 디렉터리에 `.env`가 없어 CI와 같은 조건으로 돈다.
+  - 한글 trigram 확인: `show_trgm('비타민')`이 `0x...`로 나와 처음엔 로케일 문제로 보였으나, 컨테이너 로케일은 `en_US.utf8`로 정상. 멀티바이트 trigram은 해시로 저장될 뿐이라 개수(4개)로 검증한다. 로케일이 `C`면 빈 배열이 나온다.
 - EC2 배포를 1주차에서 3주차 첫 작업으로 미룸. 배포가 처음 필요한 건 3주차 CloudFront(EC2가 원본)와 4주차 소셜 로그인 웹훅(공개 HTTPS)이고, 2주차 수집·정규화는 로컬과 S3로 충분하다. 대신 도메인 확보와 SES·소셜 로그인 검수 기간 확인을 2주차에 끝내 승인 대기가 4주차 공개를 막지 않게 한다. (`PLANNING.md` 마일스톤)
 - 2주차 체크리스트는 1주차가 끝나면 자세히 쓴다. 2주차 수집·정규화 결과를 봐야 3~4주차 모양이 정해진다.
 
