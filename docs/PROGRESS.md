@@ -12,7 +12,7 @@
 
 - [x] `core` / `api` / `batch` 멀티 모듈 (PR #1)
 - [x] 로컬 PostgreSQL compose, yaml 공통/local/prod 분리 (PR #2)
-- [ ] Flyway 첫 마이그레이션 + Testcontainers 컨텍스트 테스트
+- [x] Flyway 첫 마이그레이션 + Testcontainers 컨텍스트 테스트 (PR #5)
 - [ ] GitHub Actions CI, 브랜치 보호에 CI 필수
 - [ ] CodeRabbit·`@claude` 연결
 
@@ -31,6 +31,12 @@
    - 검증: EC2에서 `/actuator/health` UP
    - 확인: 운영 compose(또는 Dockerfile)에 `SPRING_PROFILES_ACTIVE=prod` 지정. 공통 yaml의 기본 프로필이 `local`이라 빠지면 `localhost` DB로 접속을 시도한다
    - 확인: 운영 DB 비밀번호는 새로 생성해 Parameter Store에 둔다. `.env.example` 값은 로컬 전용 예시
+   - 워크플로: `ci.yml`과 분리한 `deploy.yml`(main 푸시). `id-token: write`는 배포 job에만
+   - 이미지: t4g(ARM)라 `linux/arm64`로 빌드. QEMU보다 `ubuntu-24.04-arm` 러너 네이티브 빌드 우선 검토
+   - 태그: `latest`와 `github.sha`를 함께 붙여 롤백할 이미지를 남긴다. 레이어 캐시는 `cache-from/to: type=gha`
+   - 배포 job은 `concurrency`의 `cancel-in-progress: false`(중간에 끊기면 서버가 어중간한 상태로 남음)
+   - 배포 후 `/actuator/health` UP 확인 단계로 끝낸다
+   - jar artifact 전달은 Dockerfile 방식이 정해진 뒤 판단. 멀티 모듈이라 경로는 `api/build/libs`, `-plain.jar` 제외
 
 ## 완료
 

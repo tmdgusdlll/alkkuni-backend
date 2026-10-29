@@ -7,6 +7,7 @@ import org.springframework.boot.health.contributor.Status
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection
 import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.test.context.ActiveProfiles
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import org.testcontainers.postgresql.PostgreSQLContainer
@@ -16,6 +17,8 @@ import kotlin.test.assertTrue
 // 실제 PostgreSQL에 붙어 컨텍스트가 뜨고 Flyway 마이그레이션이 적용되는지 확인한다.
 @SpringBootTest
 @Testcontainers
+// 기본 프로필(local)의 .env·로컬 DB 설정을 타지 않도록 test로 고정한다. application-test.yaml은 아직 필요 없어 두지 않음.
+@ActiveProfiles("test")
 class AlkkuniApiApplicationTest(
     @Autowired private val jdbcTemplate: JdbcTemplate,
     @Autowired private val healthEndpoint: HealthEndpoint,
