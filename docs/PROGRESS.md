@@ -1,8 +1,12 @@
 # PROGRESS.md
 
-알꾼이 백엔드의 진행 상황이다. **작업을 마칠 때마다 갱신한다.**
+알꾼이 백엔드의 진행 상황이다. **작업 PR 안에서 갱신하고, 머지되면 확정된다.** 머지 후 문서만 고치는 변경을 만들지 않는다.
 
-- 지금 상태: 이번 주차 목차. 체크 안 된 첫 항목이 다음 작업이다. PR이 머지되면 체크한다.
+- PR을 올리기 전: 작업 커밋에 결정 이유, 다음 할 일 정리 등 이미 아는 내용을 넣는다.
+- PR을 올린 뒤 머지 전: CI 결과, PR 번호처럼 PR이 있어야 아는 내용만 같은 브랜치에 커밋을 더한다.
+
+
+- 지금 상태: 이번 주차 목차. 체크 안 된 첫 항목이 다음 작업이다. 해당 PR에서 체크한다.
 - 다음 할 일: 항목별로 정할 것과 검증 기준. 끝난 항목은 지우고 "완료"에 날짜와 함께 옮긴다.
 - 작업 로그: 결정과 그 이유. 최근 날짜가 위에 온다.
 
@@ -13,20 +17,17 @@
 - [x] `core` / `api` / `batch` 멀티 모듈 (PR #1)
 - [x] 로컬 PostgreSQL compose, yaml 공통/local/prod 분리 (PR #2)
 - [x] Flyway 첫 마이그레이션 + Testcontainers 컨텍스트 테스트 (PR #5)
-- [ ] GitHub Actions CI, 브랜치 보호에 CI 필수
+- [x] GitHub Actions CI, 브랜치 보호에 CI 필수 (PR #6)
 - [ ] CodeRabbit·`@claude` 연결
 
 ## 다음 할 일
 
-1. GitHub Actions CI
-   - 할 것: build + test, `setup-java`로 JDK 21. Testcontainers가 러너의 Docker로 도는지 확인. 테스트가 `local` 프로필·`.env`를 타지 않도록 `test` 프로필 정하기
-   - 검증: PR에서 CI 통과 → 브랜치 보호에 CI 체크 통과·대화 해결 필수 추가
-2. CodeRabbit·`@claude` 연결
+1. CodeRabbit·`@claude` 연결
    - 할 것: CodeRabbit 앱 설치와 `.coderabbit.yaml`, `/install-github-app`으로 `@claude` 연결 (자동 실행 안 함)
    - 검증: 테스트 PR에서 `@coderabbitai review`, `@claude` 응답 확인
-3. (2주차) 스파이크 검수 200개로 파서 골든 테스트
-4. (2주차) 배포 준비: 도메인 확보, SES 샌드박스 해제·소셜 로그인 검수에 걸리는 기간 확인
-5. (3주차 첫 작업) ECR 푸시 → EC2 기본 배포. 배포가 처음 필요한 시점이 3주차 CloudFront라 미룸
+2. (2주차) 스파이크 검수 200개로 파서 골든 테스트
+3. (2주차) 배포 준비: 도메인 확보, SES 샌드박스 해제·소셜 로그인 검수에 걸리는 기간 확인
+4. (3주차 첫 작업) ECR 푸시 → EC2 기본 배포. 배포가 처음 필요한 시점이 3주차 CloudFront라 미룸
    - 정할 것: Dockerfile 방식(Boot `bootBuildImage` vs 직접 작성), OIDC IAM 역할 범위
    - 검증: EC2에서 `/actuator/health` UP
    - 확인: 운영 compose(또는 Dockerfile)에 `SPRING_PROFILES_ACTIVE=prod` 지정. 공통 yaml의 기본 프로필이 `local`이라 빠지면 `localhost` DB로 접속을 시도한다
@@ -40,6 +41,7 @@
 
 ## 완료
 
+- [x] GitHub Actions CI(`ci.yml`), 브랜치 보호에 `build` 체크·대화 해결 필수 (2026-10-29)
 - [x] Flyway `V1__enable_pg_trgm.sql`, Testcontainers 컨텍스트 테스트 3개 (2026-10-29)
 - [x] 로컬 PostgreSQL `compose.yaml`·`.env.example`, api·batch yaml 공통/local/prod 분리 (2026-10-28)
 - [x] 리뷰 문서 반영: `REVIEW.md`, PR 템플릿, `CLAUDE.md`·`PLANNING.md` 갱신 (2026-10-28)
@@ -66,6 +68,12 @@
 ## 작업 로그
 
 ### 2026-10-29
+- GitHub Actions CI (`chore/ci`)
+  - `ci.yml` 하나만 둔다. CD는 트리거(main 푸시)와 조건이 달라 3주차에 `deploy.yml`로 분리. 한 파일에서도 job별 `permissions`로 권한은 나눌 수 있지만, 파일을 나누면 조건이 단순하고 브랜치 보호 체크 이름이 CD 작업에 흔들리지 않는다.
+  - Gradle 캐시는 `actions/cache` 대신 `setup-gradle`. `gradlew`는 git에 100755로 들어가 있어 `chmod` 단계 없음. checkout에 `persist-credentials: false`.
+  - 테스트는 `@ActiveProfiles("test")`로 고정. `application-test.yaml`은 넣을 값이 없어 두지 않는다. 프로필을 지정하면 `profiles.default: local`이 무시돼 `.env` import를 타지 않고, DB는 `@ServiceConnection`이 덮어쓴다.
+  - 러너(`ubuntu-latest`)의 기본 Docker로 Testcontainers 통과, 1분 49초.
+  - 브랜치 보호: `build` 체크(GitHub Actions 앱으로 고정)와 대화 해결 필수 추가. 브랜치 최신화 필수(`strict`)는 1인 개발이라 매번 갱신하는 비용만 생겨 끔. CodeRabbit 리뷰 완료는 필수로 걸지 않는다(장애 시 머지가 막힘).
 - Flyway·Testcontainers (`chore/flyway-testcontainers`)
   - `V1`은 `pg_trgm` 확장만 넣음. 비워 두면 Flyway가 SQL을 적용하는지 테스트로 확인할 수 없고, 테이블은 ERD가 2주차 수집 결과로 바뀔 수 있어 엔티티를 만들 때 V2부터 넣는다.
   - 컨텍스트 테스트(`postgres:17`, `@ServiceConnection`): Flyway V1 적용·`pg_trgm` 존재, 한글 trigram 생성, 헬스 UP. 테스트는 기본 프로필 `local`로 돈다. 작업 디렉터리가 루트면 `.env`가 섞일 수 있어 CI 작업에서 `test` 프로필을 정한다.
