@@ -18,16 +18,13 @@
 - [x] 로컬 PostgreSQL compose, yaml 공통/local/prod 분리 (PR #2)
 - [x] Flyway 첫 마이그레이션 + Testcontainers 컨텍스트 테스트 (PR #5)
 - [x] GitHub Actions CI, 브랜치 보호에 CI 필수 (PR #6)
-- [ ] CodeRabbit 연결
+- [x] CodeRabbit 연결 (PR #7)
 
 ## 다음 할 일
 
-1. CodeRabbit 연결
-   - 할 것: CodeRabbit 앱 설치와 `.coderabbit.yaml`
-   - 검증: 이 PR에서 `@coderabbitai review` 응답 확인
-2. (2주차) 스파이크 검수 200개로 파서 골든 테스트
-3. (2주차) 배포 준비: 도메인 확보, SES 샌드박스 해제·소셜 로그인 검수에 걸리는 기간 확인
-4. (3주차 첫 작업) ECR 푸시 → EC2 기본 배포. 배포가 처음 필요한 시점이 3주차 CloudFront라 미룸
+1. (2주차) 스파이크 검수 200개로 파서 골든 테스트
+2. (2주차) 배포 준비: 도메인 확보, SES 샌드박스 해제·소셜 로그인 검수에 걸리는 기간 확인
+3. (3주차 첫 작업) ECR 푸시 → EC2 기본 배포. 배포가 처음 필요한 시점이 3주차 CloudFront라 미룸
    - 정할 것: Dockerfile 방식(Boot `bootBuildImage` vs 직접 작성), OIDC IAM 역할 범위
    - 검증: EC2에서 `/actuator/health` UP
    - 확인: 운영 compose(또는 Dockerfile)에 `SPRING_PROFILES_ACTIVE=prod` 지정. 공통 yaml의 기본 프로필이 `local`이라 빠지면 `localhost` DB로 접속을 시도한다
@@ -41,6 +38,7 @@
 
 ## 완료
 
+- [x] CodeRabbit 연결(`.coderabbit.yaml`, 수동 리뷰), `@claude` 연동은 제외 (2026-10-29)
 - [x] GitHub Actions CI(`ci.yml`), 브랜치 보호에 `build` 체크·대화 해결 필수 (2026-10-29)
 - [x] Flyway `V1__enable_pg_trgm.sql`, Testcontainers 컨텍스트 테스트 3개 (2026-10-29)
 - [x] 로컬 PostgreSQL `compose.yaml`·`.env.example`, api·batch yaml 공통/local/prod 분리 (2026-10-28)
@@ -68,10 +66,12 @@
 ## 작업 로그
 
 ### 2026-10-29
-- CodeRabbit 연결 (`chore/coderabbit`)
+- CodeRabbit 연결 (`chore/coderabbit`, PR #7)
   - `@claude` GitHub 연동은 하지 않기로 함. 1인 개발이라 질문은 로컬 Claude Code로 충분하고, 연결하면 시크릿과 워크플로 파일(위험 경로)만 늘어난다. (`PLANNING.md` "리뷰 구조")
   - `.coderabbit.yaml`: 한국어 리뷰, 자동 리뷰 끔(`@coderabbitai review`로 수동 요청).
   - CodeRabbit도 로컬과 같은 `REVIEW.md`·`CLAUDE.md` 기준으로 리뷰한다. 기본 설정(`code_guidelines`)이 두 파일을 읽으므로 따로 지정하지 않는다. 기준을 빼면 넓게 보지만 이미 정한 규칙(엔티티 `data class` 금지 등)과 부딪히는 오탐 처리 비용이 더 크다고 봄. 관점 차이는 기준보다 도구·모델 차이에서 나온다.
+  - 검증: `@coderabbitai review`로 리뷰 받음(Minor 2건, 문서 표현). `REVIEW.md`·`CLAUDE.md`는 기본 탐색 패턴에 들어가 설정상 적용 대상임을 CodeRabbit 답변으로 확인. 실제 실행에서 지침으로 읽었는지는 리뷰 기록에 남지 않아 확인 불가. 이후 리뷰에서 `REVIEW.md` 기준(심각도 표기, "지적하지 말 것")을 따르는지로 판단한다.
+  - 리뷰 한도: 이 레포는 시간당 리뷰 1회(OSS 등급, 개발자 단위, 최근 1시간 기준으로 다시 채워짐). 채팅은 별도 한도라 질문은 리뷰를 쓰지 않는다. 지적 반영은 모아서 푸시한다.
   - `CLAUDE.md`의 `PROGRESS.md` 갱신 규칙을 "작업을 마칠 때"에서 "작업 PR 안에서"로 바꿈. 새 `PROGRESS.md` 상단 규칙(머지 후 문서만 고치는 변경 금지)과 맞춤.
 - GitHub Actions CI (`chore/ci`)
   - `ci.yml` 하나만 둔다. CD는 트리거(main 푸시)와 조건이 달라 3주차에 `deploy.yml`로 분리. 한 파일에서도 job별 `permissions`로 권한은 나눌 수 있지만, 파일을 나누면 조건이 단순하고 브랜치 보호 체크 이름이 CD 작업에 흔들리지 않는다.

@@ -139,7 +139,7 @@
 | 보안 리뷰 | Claude `/security-review` | 로컬, 인증·서랍·웹훅·외부 키를 건드린 PR |
 | 사람 정독 | 현이 | 위험도 "높음" PR, `REVIEW.md`의 "사람 정독 필요" 경로 |
 | CI | GitHub Actions (build + test) | PR, 머지 필수 조건 |
-| 교차 리뷰 | CodeRabbit (공개 레포 무료, 스타 10개 전에는 `@coderabbitai review`로 수동 요청). 기준은 로컬과 같은 `REVIEW.md`·`CLAUDE.md` | PR |
+| 교차 리뷰 | CodeRabbit (공개 레포 무료). 자동 리뷰는 끄고 `@coderabbitai review`로 수동 요청(스타 10개 미만 공개 레포는 CodeRabbit이 수동 요청만 허용). 리뷰 한도가 개발자당 시간 단위로 걸리므로 지적 반영은 모아서 푸시한다. 기준은 로컬과 같은 `REVIEW.md`·`CLAUDE.md` | PR |
 
 - 머지 조건: CI 통과, 리뷰 댓글 전부 해결, 승인 0명(혼자라 셀프 승인 불가), 일반 머지(merge commit). 리뷰 반영·수정 커밋까지 `main` 기록에 남겨 작업 과정을 볼 수 있게 한다.
 - 리뷰 댓글에는 "고침 / 오탐 / 의도됨"으로 답하고 닫는다. 반복되는 실수는 테스트로, 반복되는 오탐은 `REVIEW.md`·`.coderabbit.yaml`로 옮긴다.
