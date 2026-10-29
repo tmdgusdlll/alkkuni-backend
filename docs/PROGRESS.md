@@ -8,14 +8,13 @@
 
 ## 지금 상태
 
-### 1주차 체크리스트 — 백엔드 레포 골격과 기본 배포
+### 1주차 체크리스트 — 백엔드 레포 골격, CI, 리뷰 봇
 
 - [x] `core` / `api` / `batch` 멀티 모듈 (PR #1)
 - [x] 로컬 PostgreSQL compose, yaml 공통/local/prod 분리 (PR #2)
 - [ ] Flyway 첫 마이그레이션 + Testcontainers 컨텍스트 테스트
 - [ ] GitHub Actions CI, 브랜치 보호에 CI 필수
 - [ ] CodeRabbit·`@claude` 연결
-- [ ] ECR 푸시 → EC2 기본 배포
 
 ## 다음 할 일
 
@@ -29,12 +28,13 @@
 3. CodeRabbit·`@claude` 연결
    - 할 것: CodeRabbit 앱 설치와 `.coderabbit.yaml`, `/install-github-app`으로 `@claude` 연결 (자동 실행 안 함)
    - 검증: 테스트 PR에서 `@coderabbitai review`, `@claude` 응답 확인
-4. ECR 푸시 → EC2 기본 배포
+4. (2주차) 스파이크 검수 200개로 파서 골든 테스트
+5. (2주차) 배포 준비: 도메인 확보, SES 샌드박스 해제·소셜 로그인 검수에 걸리는 기간 확인
+6. (3주차 첫 작업) ECR 푸시 → EC2 기본 배포. 배포가 처음 필요한 시점이 3주차 CloudFront라 미룸
    - 정할 것: Dockerfile 방식(Boot `bootBuildImage` vs 직접 작성), OIDC IAM 역할 범위
    - 검증: EC2에서 `/actuator/health` UP
    - 확인: 운영 compose(또는 Dockerfile)에 `SPRING_PROFILES_ACTIVE=prod` 지정. 공통 yaml의 기본 프로필이 `local`이라 빠지면 `localhost` DB로 접속을 시도한다
    - 확인: 운영 DB 비밀번호는 새로 생성해 Parameter Store에 둔다. `.env.example` 값은 로컬 전용 예시
-5. (2주차) 스파이크 검수 200개로 파서 골든 테스트
 
 ## 완료
 
@@ -61,6 +61,10 @@
 - [ ] 상표(KIPRIS)와 도메인 확보
 
 ## 작업 로그
+
+### 2026-10-29
+- EC2 배포를 1주차에서 3주차 첫 작업으로 미룸. 배포가 처음 필요한 건 3주차 CloudFront(EC2가 원본)와 4주차 소셜 로그인 웹훅(공개 HTTPS)이고, 2주차 수집·정규화는 로컬과 S3로 충분하다. 대신 도메인 확보와 SES·소셜 로그인 검수 기간 확인을 2주차에 끝내 승인 대기가 4주차 공개를 막지 않게 한다. (`PLANNING.md` 마일스톤)
+- 2주차 체크리스트는 1주차가 끝나면 자세히 쓴다. 2주차 수집·정규화 결과를 봐야 3~4주차 모양이 정해진다.
 
 ### 2026-10-28
 - 리뷰 구조 확정: 로컬 Claude `/code-review` + `REVIEW.md`, PR은 CI + CodeRabbit, 위험 경로는 `/security-review`와 직접 정독, 파서는 골든 테스트. (`PLANNING.md` "리뷰 구조")
