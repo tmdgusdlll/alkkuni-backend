@@ -1,0 +1,35 @@
+# PR과 main 푸시마다 빌드·테스트를 돌린다. 배포(CD)는 권한·트리거가 달라 deploy.yml로 따로 둔다.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# 같은 브랜치에 새 커밋이 오면 이전 실행은 취소한다.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # 빌드만 하므로 토큰을 .git/config에 남기지 않는다.
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      # Testcontainers는 러너에 기본 설치된 Docker로 PostgreSQL을 띄운다.
+      - run: ./gradlew build
