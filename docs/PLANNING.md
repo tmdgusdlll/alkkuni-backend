@@ -95,12 +95,17 @@
 |---|---|
 | Product | 제품. 자연키(품목제조보고번호), 제조사, 섭취방법, 원본 해시 |
 | Ingredient | 정규 성분 사전. 동의어, 성분별 단위 변환 규칙 |
-| ProductIngredient | 제품-성분 함량. 정규화 값 + 원문 + 추출 방식·확신도·로직 버전 |
-| Recall | 회수. 원본 일련번호, 사유, 소비기한, 목록 상태, 매칭된 제품 |
+| ProductIngredient | 제품-성분 함량. 정규화 값 + 원문 + 추출 방식·확신도·로직 버전. 사전에 없는 성분은 성분 FK 없이 원문만 둔다 |
+| Recall | 회수. 원본 일련번호, 사유, 소비기한, 목록 상태, 확정된 매칭 제품 |
+| RecallMatchCandidate | 번호로 매칭되지 않은 회수의 제품 후보. 사람이 수락·거절한다 |
 | ShoppingLink | 구매 링크. 유형(상세/검색), 매칭 확신도, 점검 시각 |
 | Member / SocialAccount | 사용자와 제공자별 소셜 계정 |
 | DrawerItem | 서랍에 담긴 제품 |
-| Notification / Outbox | 알림 이력과 발송 대기 이벤트 |
+| Notification | 회수 알림 한 건이자 Outbox. `PENDING` 행을 발송기가 보낸다. (회원, 회수) 유니크로 중복 발송을 막는다 |
+| IngestionCursor | 출처별 마지막 수집일 |
+
+- Product는 원본에서 사라져도 지우지 않고 `DELISTED`로 표시한다. 서랍·회수가 참조하기 때문이다.
+- 컬럼과 관계는 `docs/erd.sql`(ERDCloud 가져오기용, Flyway 아님)에 있다. 마이그레이션은 해당 주차에 필요한 테이블만 추가한다.
 
 ## 인증
 
