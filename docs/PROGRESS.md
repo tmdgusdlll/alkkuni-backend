@@ -19,7 +19,7 @@
 ## 다음 할 일
 
 1. GitHub Actions CI
-   - 할 것: build + test, `setup-java`로 JDK 21. Testcontainers가 러너의 Docker로 도는지 확인
+   - 할 것: build + test, `setup-java`로 JDK 21. Testcontainers가 러너의 Docker로 도는지 확인. 테스트가 `local` 프로필·`.env`를 타지 않도록 `test` 프로필 정하기
    - 검증: PR에서 CI 통과 → 브랜치 보호에 CI 체크 통과·대화 해결 필수 추가
 2. CodeRabbit·`@claude` 연결
    - 할 것: CodeRabbit 앱 설치와 `.coderabbit.yaml`, `/install-github-app`으로 `@claude` 연결 (자동 실행 안 함)
@@ -62,7 +62,8 @@
 ### 2026-10-29
 - Flyway·Testcontainers (`chore/flyway-testcontainers`)
   - `V1`은 `pg_trgm` 확장만 넣음. 비워 두면 Flyway가 SQL을 적용하는지 테스트로 확인할 수 없고, 테이블은 ERD가 2주차 수집 결과로 바뀔 수 있어 엔티티를 만들 때 V2부터 넣는다.
-  - 컨텍스트 테스트(`postgres:17`, `@ServiceConnection`): Flyway V1 적용·`pg_trgm` 존재, 한글 trigram 생성, 헬스 UP. 테스트 작업 디렉터리에 `.env`가 없어 CI와 같은 조건으로 돈다.
+  - 컨텍스트 테스트(`postgres:17`, `@ServiceConnection`): Flyway V1 적용·`pg_trgm` 존재, 한글 trigram 생성, 헬스 UP. 테스트는 기본 프로필 `local`로 돈다. 작업 디렉터리가 루트면 `.env`가 섞일 수 있어 CI 작업에서 `test` 프로필을 정한다.
+  - V1에 `WITH SCHEMA public`(사용자 이름 스키마에 설치되는 것 방지)과, `show_trgm('가')`가 비면 예외를 던지는 `DO` 블록을 넣음. 테스트는 컨테이너만 보므로 운영 DB가 C 로케일이면 배포 시점에 막는다. C 로케일 컨테이너에서 실패, en_US.utf8에서 통과 확인. PG16+는 `lc_ctype` 설정이 없어 `pg_database.datctype`으로 읽는다.
   - 한글 trigram 확인: `show_trgm('비타민')`이 `0x...`로 나와 처음엔 로케일 문제로 보였으나, 컨테이너 로케일은 `en_US.utf8`로 정상. 멀티바이트 trigram은 해시로 저장될 뿐이라 개수(4개)로 검증한다. 로케일이 `C`면 빈 배열이 나온다.
 - EC2 배포를 1주차에서 3주차 첫 작업으로 미룸. 배포가 처음 필요한 건 3주차 CloudFront(EC2가 원본)와 4주차 소셜 로그인 웹훅(공개 HTTPS)이고, 2주차 수집·정규화는 로컬과 S3로 충분하다. 대신 도메인 확보와 SES·소셜 로그인 검수 기간 확인을 2주차에 끝내 승인 대기가 4주차 공개를 막지 않게 한다. (`PLANNING.md` 마일스톤)
 - 2주차 체크리스트는 1주차가 끝나면 자세히 쓴다. 2주차 수집·정규화 결과를 봐야 3~4주차 모양이 정해진다.
