@@ -3,7 +3,7 @@
 알꾼이 백엔드 코드 리뷰 기준이다. 프로젝트 맥락과 코드 규칙은 `CLAUDE.md`, 설계 결정은 `docs/PLANNING.md`를 따른다.
 이 파일은 리뷰할 때 **무엇을 지적하고, 어느 심각도로 보고, 무엇을 넘길지**만 정한다.
 
-> 이 파일은 자동으로 읽히지 않는다. GitHub Action 리뷰 워크플로의 프롬프트와 로컬 리뷰 요청에서 "REVIEW.md를 읽고 그 기준으로 리뷰하라"고 직접 지정해야 적용된다.
+> 로컬 Claude는 이 파일을 자동으로 읽지 않는다. `CLAUDE.md` 규칙으로 `/code-review` 때 읽게 한다. CodeRabbit은 기본 설정(`knowledge_base.code_guidelines`)으로 이 파일과 `CLAUDE.md`를 리뷰 기준에 넣는다.
 
 ## 이 서비스에서 "깨졌다"의 뜻
 

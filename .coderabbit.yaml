@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# REVIEW.md·CLAUDE.md는 기본 설정(knowledge_base.code_guidelines)으로 리뷰 기준에 들어간다
+language: ko-KR
+
+reviews:
+  # 자동 리뷰는 끄고 PR에서 `@coderabbitai review`로 요청한다 (PLANNING.md "리뷰 구조")
+  auto_review:
+    enabled: false
