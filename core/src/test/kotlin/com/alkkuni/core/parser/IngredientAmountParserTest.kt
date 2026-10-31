@@ -7,7 +7,7 @@ import kotlin.test.assertEquals
 class IngredientAmountParserTest {
 
     private fun parse(text: String) =
-        IngredientAmountParser.parse(text).map { listOf(it.rawName, it.amount.toPlainString(), it.unit, it.basisAmount.toPlainString(), it.basisUnit) }
+        IngredientAmountParser.parse(text).amounts.map { listOf(it.rawName, it.amount.toPlainString(), it.unit, it.basisAmount.toPlainString(), it.basisUnit) }
 
     @Test
     fun `IU 병기는 단위에 넣지 않는다`() {
@@ -130,5 +130,32 @@ class IngredientAmountParserTest {
             listOf(listOf("L-주석산", "823.53040", "mg", "10000", "mg")),
             parse("4) L-주석산: 823.53040mg~1029.413mg/10,000mg"),
         )
+    }
+
+    @Test
+    fun `함량 모양인데 읽지 못한 줄은 못 읽은 줄로 돌려준다`() {
+        // 20230029284258 (소수점 쉼표), 20040020071505 (숫자 사이 공백), 2009002006714 (분모가 정)
+        for (line in listOf(
+            "4) 비타민 E : 표시량(5,5mga-TE/1,500mg)의 80~150%",
+            "-비타민D: 표시량(3㎍/4, 100mg)의 80~180%",
+            "5) 6,7-Dimethylesculetin - 표시량[0.138mg/4정(2,000mg)]의 80~120%",
+        )) {
+            assertEquals(listOf(line), IngredientAmountParser.parse(line).unreadLines, line)
+        }
+    }
+
+    @Test
+    fun `일부러 버린 값과 범위·성분명 숫자는 못 읽은 줄이 아니다`() {
+        for (line in listOf(
+            "1. 납(mg/kg) : 1.0 이하",
+            "3.세균수:3,000cfu/㎖",
+            "④ 세균수 : 100 /ml 이하",
+            "베타클루칸 :  표시량(50mg/2.4g)의 80~120mg/g이어야 한다.",
+            "비타민B1 / 1.2mg[1,000mg]의 80~180%",
+            "1. MSM 1.5g/3,200mg (80~120%)",
+            "(1)성상 : 암갈색의 액상\n(2)진세노사드 : 원료성 제품 - 표시량(1,0mg/g)이상",
+        )) {
+            assertEquals(emptyList(), IngredientAmountParser.parse(line).unreadLines, line)
+        }
     }
 }

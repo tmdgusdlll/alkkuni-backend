@@ -21,7 +21,7 @@ class IngredientAmountParserGoldenTest {
 
         val failures = ruleTargets.mapNotNull { (reportNo, rows) ->
             val want = rows.map { Amount(it[2], BigDecimal(it[3]), it[4], BigDecimal(it[5]), it[6]) }
-            val got = IngredientAmountParser.parse(inputs.getValue(reportNo)).map {
+            val got = IngredientAmountParser.parse(inputs.getValue(reportNo)).amounts.map {
                 Amount(it.rawName, it.amount, it.unit, it.basisAmount, it.basisUnit)
             }
             if (sorted(want) == sorted(got)) null else reportNo to "$reportNo\n  기대: $want\n  실제: $got"
@@ -32,6 +32,18 @@ class IngredientAmountParserGoldenTest {
             failures.keys,
             "맞힌 제품 ${ruleTargets.size - failures.size}/${ruleTargets.size}\n" + failures.values.joinToString("\n"),
         )
+    }
+
+    @Test
+    fun `골든 데이터에서 검수로 가는 제품은 알려진 원문 표기 오류뿐이다`() {
+        // 못 읽은 줄('4, 100mg') 또는 이상치(분모 '1.600 mg', '1.500mg')로 잡힌다. 틀리는 제품이 모두 검수로 가는지도 함께 본다.
+        val inputs = readTsv("golden/inputs.tsv").associate { it[0] to unescape(it[1]) }
+        val flagged = inputs.filterValues { text ->
+            val result = IngredientAmountParser.parse(text)
+            result.unreadLines.isNotEmpty() || AmountSanityCheck.issues(result.amounts).isNotEmpty()
+        }.keys
+
+        assertEquals(knownFailures, flagged)
     }
 
     // 비교용 값. 공백 차이는 무시하고, 숫자는 0.5와 0.50을 같게 본다.
