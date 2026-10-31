@@ -11,6 +11,13 @@ data class ParsedAmount(
     val basisUnit: String,
 )
 
+// unreadLines: 함량 모양("숫자 단위/분모")이 있는데 읽지 못한 줄. 비어 있지 않으면 검수 대상이다.
+// 원문 줄 그대로가 아니라 항목 번호로 나누고 "최종제품" 표시를 지운 조각이다. 원문에서 찾을 때는 일부 문자열로 검색한다.
+data class ParseResult(
+    val amounts: List<ParsedAmount>,
+    val unreadLines: List<String>,
+)
+
 // 기준규격 문장에서 "함량 단위/분모 단위" 모양을 찾아 성분별 함량을 뽑는다.
 // "표시량" 글자나 괄호 모양(( ) [ ] { } ｛ ｝)에 기대지 않는다. 표기가 제품마다 달라서다.
 // 정확도는 골든 테스트(IngredientAmountParserGoldenTest)로 지킨다.
@@ -57,15 +64,36 @@ object IngredientAmountParser {
     private val spaces = Regex("""(?U)\s+""")
     private val lineBreak = Regex("\r?\n")
 
-    fun parse(standardText: String): List<ParsedAmount> {
-        val result = mutableListOf<ParsedAmount>()
+    // 못 읽은 줄을 찾는 느슨한 함량 모양. 숫자에 아무 쉼표·마침표를 받고("1,5g", "4, 100mg"), 분모 단위도 가리지 않는다("100mg/1정").
+    // 단위 자리에 숫자·괄호·콜론·한글을 받지 않아야 "1. 납(mg/kg)", "1. MSM 1.5g/…"의 항목 번호에서 시작하지 않는다.
+    // 단위가 없는 "세균수 : 100 /mL", 범위의 위쪽 값("80~120mg/g"), 성분명 안의 숫자("비타민B1 / 1.2mg")는 함량 모양이 아니다.
+    private val looseAmount = Regex(
+        """(?U)(?<![A-Za-z\d.,])(?<![~～]\s{0,3})\d+(?:[.,]\s?\d+)*\s*[^\s\d/()\[\]{}:：가-힣][^\d/\n()\[\]{}:：가-힣]{0,14}?""" +
+            """\s*/\s*(?:\d+(?:[.,]\s?\d+)*)?\s*[^\s\d]""",
+    )
+
+    fun parse(standardText: String): ParseResult {
+        val amounts = mutableListOf<ParsedAmount>()
+        val unreadLines = mutableListOf<String>()
         // "2. 진세노사이드 합 / 1) 원료성제품 : … / 2) 최종제품 : …"처럼 성분명이 위 줄에만 있는 경우에 쓴다.
         var heading = ""
         for (segment in segments(standardText).map { finalProduct.replace(it, "") }) {
-            if (!rawMaterial.containsMatchIn(segment)) result += parseSegment(segment, heading)
+            if (!rawMaterial.containsMatchIn(segment)) {
+                amounts += parseSegment(segment, heading)
+                if (hasUnreadAmount(segment)) unreadLines += segment.trim()
+            }
             cleanName(segment.cutName()).let { if (it.isNotEmpty() && !rawMaterial.containsMatchIn(it)) heading = it }
         }
-        return result
+        return ParseResult(amounts, unreadLines)
+    }
+
+    // 느슨한 모양 중 엄격한 패턴 매치 안에 들어가지 않는 것이 있으면 못 읽은 줄이다.
+    // 엄격한 패턴으로 잡고 일부러 버린 값(오염물질 mg/kg, 이하 상한, 세균수)은 못 읽은 것이 아니다.
+    private fun hasUnreadAmount(segment: String): Boolean {
+        val read = amountPattern.findAll(segment).map { it.range }.toList()
+        return looseAmount.findAll(segment).any { loose ->
+            read.none { loose.range.first >= it.first && loose.range.last <= it.last }
+        }
     }
 
     private fun segments(text: String): List<String> =
