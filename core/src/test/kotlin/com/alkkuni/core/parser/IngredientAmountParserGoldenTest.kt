@@ -13,6 +13,9 @@ class IngredientAmountParserGoldenTest {
     // 이 목록 밖의 제품이 틀리거나, 이 제품이 맞게 되면 실패한다. 개수만 보면 하나가 고쳐지고 다른 하나가 깨져도 통과해서다.
     private val knownFailures = setOf("200400170211728", "20040020071505", "20230029284258")
 
+    // 원문에 표기 오류가 있어 검수로 가야 하는 제품. 파서를 고쳐 맞히게 돼도 원문 오류는 남으므로 knownFailures와 따로 둔다.
+    private val needsReview = setOf("200400170211728", "20040020071505", "20230029284258")
+
     @Test
     fun `골든 데이터에서 틀리는 제품은 알려진 원문 표기 오류뿐이다`() {
         val inputs = readTsv("golden/inputs.tsv").associate { it[0] to unescape(it[1]) }
@@ -36,14 +39,14 @@ class IngredientAmountParserGoldenTest {
 
     @Test
     fun `골든 데이터에서 검수로 가는 제품은 알려진 원문 표기 오류뿐이다`() {
-        // 못 읽은 줄('4, 100mg') 또는 이상치(분모 '1.600 mg', '1.500mg')로 잡힌다. 틀리는 제품이 모두 검수로 가는지도 함께 본다.
+        // 못 읽은 줄('4, 100mg') 또는 이상치(분모 '1.600 mg', '1.500mg')로 잡힌다.
         val inputs = readTsv("golden/inputs.tsv").associate { it[0] to unescape(it[1]) }
         val flagged = inputs.filterValues { text ->
             val result = IngredientAmountParser.parse(text)
             result.unreadLines.isNotEmpty() || AmountSanityCheck.issues(result.amounts).isNotEmpty()
         }.keys
 
-        assertEquals(knownFailures, flagged)
+        assertEquals(needsReview, flagged)
     }
 
     // 비교용 값. 공백 차이는 무시하고, 숫자는 0.5와 0.50을 같게 본다.

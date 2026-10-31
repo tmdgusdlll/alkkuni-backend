@@ -35,6 +35,19 @@ class AmountSanityCheckTest {
     }
 
     @Test
+    fun `분모가 1로 읽히는 마침표 표기와 환산 기준이 붙은 단위도 본다`() {
+        // 200400200073301 ("1.000mg"은 1로 읽힌다), 2015001000276 ("gμ"는 g으로 본다)
+        assertEquals(
+            listOf("분모 불일치: 1mg / 1000mg"),
+            issues("3) 비타민B1 : (표시량 : 0.45mg / 1,000mg)\n4) 비타민B2 : (표시량 : 0.4mg / 1.000mg)"),
+        )
+        assertEquals(
+            listOf("함량이 분모보다 큼: 비타민E 850mg α-TE/800mg"),
+            issues("3. 비타민E : 표시량(850mg α-TE/800mg)의 80~150%"),
+        )
+    }
+
+    @Test
     fun `정상 제품과 질량이 아닌 단위는 잡지 않는다`() {
         // 20040016034114 (소수점 3자리 함량 0.504mg 류 포함), 농도 표기, IU·CFU
         assertEquals(

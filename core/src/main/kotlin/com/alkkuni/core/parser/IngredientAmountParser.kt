@@ -12,6 +12,7 @@ data class ParsedAmount(
 )
 
 // unreadLines: 함량 모양("숫자 단위/분모")이 있는데 읽지 못한 줄. 비어 있지 않으면 검수 대상이다.
+// 원문 줄 그대로가 아니라 항목 번호로 나누고 "최종제품" 표시를 지운 조각이다. 원문에서 찾을 때는 일부 문자열로 검색한다.
 data class ParseResult(
     val amounts: List<ParsedAmount>,
     val unreadLines: List<String>,

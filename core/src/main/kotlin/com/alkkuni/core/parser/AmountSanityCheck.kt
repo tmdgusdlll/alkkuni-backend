@@ -6,7 +6,9 @@ import java.math.BigDecimal
 // "1.600 mg"이 1,600의 오기인지 진짜 1.6인지는 숫자 하나로는 알 수 없어서, 다른 값과 맞지 않을 때만 잡는다.
 object AmountSanityCheck {
 
-    // 질량 단위만 비교한다. "mg α-TE", "IU", "CFU"처럼 질량으로 바꿀 수 없는 단위는 건너뛴다.
+    // 질량 단위만 비교한다. "IU", "CFU"처럼 질량으로 바꿀 수 없는 단위는 건너뛴다.
+    // "mg α-TE", "mg NE", "㎍ DFE"는 앞의 질량 단위로 본다. 환산 기준이 붙었을 뿐 질량이다.
+    private val massPrefix = Regex("""^(kg|mg|㎎|μg|µg|㎍|ug|g)(?![a-z])""")
     private val mgPerUnit = mapOf(
         "kg" to BigDecimal("1000000"),
         "g" to BigDecimal("1000"),
@@ -30,9 +32,8 @@ object AmountSanityCheck {
         }
 
         // 2) 같은 제품 안에서 분모가 정확히 1000배 차이 나면 쉼표·마침표나 g·mg를 잘못 적은 것이다("1.6mg"과 "1,600mg").
-        // 분모가 단위만 있는 농도 표기("4mg/g")는 제품 1회 분량이 아니라서 비교하지 않는다.
+        // 분모가 단위만 있는 농도 표기("4mg/g")도 1로 넣어 비교한다. 빼면 "1.000mg"(1,000mg의 오기)이 함께 빠진다.
         val bases = amounts
-            .filter { it.basisAmount.compareTo(BigDecimal.ONE) != 0 }
             .mapNotNull { a -> toMg(a.basisAmount, a.basisUnit)?.let { it to "${a.basisAmount.plain()}${a.basisUnit}" } }
             .distinctBy { it.first.stripTrailingZeros() }
         for ((small, smallText) in bases) {
@@ -42,7 +43,7 @@ object AmountSanityCheck {
         return issues
     }
 
-    private fun toMg(value: BigDecimal, unit: String): BigDecimal? = mgPerUnit[unit.trim().lowercase()]?.let { value * it }
+    private fun toMg(value: BigDecimal, unit: String): BigDecimal? = massPrefix.find(unit.trim().lowercase())?.let { mgPerUnit[it.value] }?.let { value * it }
 
     private fun BigDecimal.plain() = stripTrailingZeros().toPlainString()
 }
