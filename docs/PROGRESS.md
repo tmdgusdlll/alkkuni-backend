@@ -17,7 +17,7 @@
 - [x] 성분 함량 규칙 파서 + 골든 테스트 (PR #8)
 - [x] 검수 대상 판단: 못 읽은 줄, 함량 이상치 (PR #9)
 - [x] V2 마이그레이션: `Product`, `Ingredient`, `ProductIngredient`, `IngestionCursor` (PR #10)
-- [ ] 식약처 API 클라이언트 (`RESULT.CODE` 해석, `INFO-320`이면 재시도 없이 중단)
+- [x] 식약처 API 클라이언트 (`RESULT.CODE` 해석, `INFO-320`이면 재시도 없이 중단) (PR #11)
 - [ ] 초기 적재: 파일 방식 → 원본 저장 → 파싱 → 멱등 upsert
 - [ ] `CHNG_DT` 증분 수집
 - [ ] 회수 수집 (I0490 스냅샷 비교, 빠진 건은 상태만 변경)
@@ -31,11 +31,16 @@
    - 성분 행 멱등: `product_ingredient`에는 자연키 유니크가 없다(원문에 같은 이름이 두 번 나올 수 있어 `(product_id, raw_name)`도 키가 못 됨). 재처리는 제품 단위로 기존 행 삭제 + 재삽입을 한 트랜잭션에서 한다. 검증: 같은 원본을 두 번 적재해도 행 수가 같다
    - `ProductIngredient.ingredientId`는 지금 `protected set`. 정규화 단계에서 `linkIngredient(id)` 같은 메서드로 연다
    - Spring Batch는 쓰지 않고 `@Scheduled` + PostgreSQL advisory lock으로 시작. 재시작·청크가 필요해지면 도입
+   - 증분: 오늘 날짜 `CHNG_DT`는 19시 전에 부르면 `INFO-700`(지금은 `FoodSafetyApiException`). 수집일이 오늘이 되지 않게 하거나 `INFO-700`을 따로 처리한다
+   - 회수: I0490 `total_count`가 391인데 행은 390개(1~1000 한 번 호출, `RTRVLDSUSE_SEQ` 중복 없음). 스냅샷 비교 때 "빠진 건"으로 오판하지 않는지 확인한다
+   - 네트워크 오류 재시도는 넣지 않았다. 매일 스케줄이 다음 날 다시 받는다. 초기 적재처럼 길게 도는 작업에서 문제가 되면 추가
 2. 1일 기준 환산: 분모(기준 중량)와 섭취방법(`NTK_MTHD`) 연결, 1일 함량 = 함량 × (1일 섭취 중량 ÷ 분모)
    - 정할 것: 분모의 정 수(`2400mg(2정)`, `5.0g 20정`)를 저장할지. 지금 파서는 버린다. 섭취방법이 정 수로만 적힌 제품(스파이크 200개 중 138개가 계산 불가)을 잇는 데 필요할 수 있다
    - 단위 환산도 이 단계: `억`·`X 10^n` 배수, `㎍/μg` 통일. `cells`(사균)와 `CFU`는 섞지 않는다
-3. 배포 준비: 도메인 확보, SES 샌드박스 해제·소셜 로그인 검수에 걸리는 기간 확인
-4. (3주차 첫 작업) ECR 푸시 → EC2 기본 배포. 배포가 처음 필요한 시점이 3주차 CloudFront라 미룸
+3. api 공통 응답 형식: 모든 응답을 `ApiResponse`로 감싼다(성공 `data`, 에러 `code`·`message`·`details`). 첫 컨트롤러 PR에서 `@RestControllerAdvice`와 함께 만든다
+   - 정할 것: Spring 내장 에러(검증 실패, 404 등)도 같은 형식으로 바꿀 범위, 에러 코드 이름 규칙
+4. 배포 준비: 도메인 확보, SES 샌드박스 해제·소셜 로그인 검수에 걸리는 기간 확인
+5. (3주차 첫 작업) ECR 푸시 → EC2 기본 배포. 배포가 처음 필요한 시점이 3주차 CloudFront라 미룸
    - 정할 것: Dockerfile 방식(Boot `bootBuildImage` vs 직접 작성), OIDC IAM 역할 범위
    - 검증: EC2에서 `/actuator/health` UP
    - 확인: 운영 compose(또는 Dockerfile)에 `SPRING_PROFILES_ACTIVE=prod` 지정. 공통 yaml의 기본 프로필이 `local`이라 빠지면 `localhost` DB로 접속을 시도한다
@@ -50,6 +55,7 @@
 
 ## 완료
 
+- [x] 식약처 API 클라이언트(batch `FoodSafetyClient`, `RestClient`), 실제 API 확인 (PR #11, 2026-11-02)
 - [x] V2 마이그레이션(`product`, `ingredient`, `product_ingredient`, `ingestion_cursor`)과 core 엔티티 4개·enum 3개, api·batch `ddl-auto: validate` (PR #10, 2026-11-02)
 - [x] 성분 함량 규칙 파서(`core`의 `IngredientAmountParser`)와 골든 테스트, 규칙 대상 194개 중 191개 정답(남은 3개는 원문 표기 오류) (2026-10-30)
 - [x] 1주차 체크리스트: 멀티 모듈(PR #1), 로컬 DB·yaml 분리(PR #2), Flyway·Testcontainers(PR #5), CI(PR #6), CodeRabbit(PR #7)
@@ -81,6 +87,14 @@
 ## 작업 로그
 
 ### 2026-11-02
+- 식약처 API 클라이언트 (`feat/foodsafety-client`, PR #11). CI `build` 통과(1분 1초), CodeRabbit은 수동 요청이라 건너뜀. batch에 `spring-boot-starter-restclient`만 추가(웹 서버 없음).
+  - `fetchPage`가 `RESULT.CODE`를 해석: `INFO-000` 페이지, `INFO-200` 빈 페이지, `INFO-320` `FoodSafetyRateLimitException`(재시도 없음), 나머지 `FoodSafetyApiException`. `forEachPage`가 1000건씩 끝까지 받는다. 페이지에 응답 본문(`rawBody`)을 담아 원본 저장에 그대로 쓴다.
+  - 인증키가 URL 경로에 들어가 네트워크 오류 메시지에 섞인다. 메시지에서 키를 가리고 원인 예외는 붙이지 않는다. 마스킹을 빼면 테스트가 실패하는 것 확인.
+  - 키는 `foodsafety.api-key: ${FOODSAFETY_API_KEY}`. 로컬 `.env`, 운영 Parameter Store. 비어 있으면 기동 실패.
+  - 테스트: `MockRestServiceServer` 7개(정상 응답은 스파이크 실제 응답을 2행으로 자름). 실제 호출 `FoodSafetyClientLiveTest` 3개는 `FOODSAFETY_LIVE_TEST=true`일 때만.
+  - `/code-review` 8건 중 6건 반영: 오류 메시지에서 키가 든 URL 제거(키를 찾아 가리던 방식은 `+/=`가 인코딩되면 놓침), JSON 아닌 응답·`total_count` 누락·배열 아닌 `row`를 API 예외로 통일, `FoodSafetyPage` `toString`에서 본문 제외, 안 쓰는 `jackson-module-kotlin` 제거. 넘긴 2건: 위치 기반 페이징 누락(전체 적재는 파일 방식이라 해당 없음, 주석만 수정), `INFO-700` 전용 처리(증분에서 조회 날짜를 어제로 제한).
+  - api 응답 형식은 공통 객체로 감싸는 방식(A)으로 결정. `ProblemDetail`(성공은 DTO 그대로, 에러만 RFC 9457)과 비교해 사용자가 익숙하고 성공·에러 모양이 하나인 쪽을 골랐다.
+  - 실제 확인: I0030 1000건 한 번에 4.2초(전체 46,119건), CHNG_DT 최근 7일 327건, I0490 391건. `INFO-200`은 서비스 객체 안에 `RESULT`가 온다(스파이크 코드는 최상위도 봤음). `INFO-320` 본문은 못 봐서 두 위치 모두 읽는다. 오늘 날짜 CHNG_DT는 19시 전 `INFO-700`.
 - V2 엔티티와 마이그레이션 (`feat/v2-entities`, PR #10). 엔티티는 사용자가 직접 작성하고 Claude가 리뷰했다.
   - 패키지는 기능별: `core.product`(Product, ProductIngredient, enum), `core.ingredient`, `core.ingestion`.
   - `ProductIngredient`는 `@ManyToOne` 대신 `productId: Long`, `ingredientId: Long?` 값만 둔다. 처음 가이드는 `@ManyToOne(LAZY)` 단방향이었으나 사용자 제안으로 바꿈. 배치 대량 저장 때 프록시 없이 id만 넣으면 되고, 조회는 제품 id 기준이라 객체 탐색이 필요 없다. 참조 무결성은 V2의 FK 제약이 지킨다. 정리: 노션 「ProductIngredient: @ManyToOne 대신 FK 값만 보관」
