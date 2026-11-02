@@ -42,11 +42,14 @@ class ProductUpserterTest(
         jdbc.execute("TRUNCATE product, product_ingredient")
     }
 
-    // 커서는 같은 id로 새 객체를 save해 덮어쓴다(merge). 초기 적재 재실행·증분 갱신이 이 동작에 기댄다.
+    // 잡은 트랜잭션 밖에서 커서를 읽고(advance) save한다. 분리된 객체의 변경이 DB에 반영되는지 확인한다.
     @Test
-    fun `커서를 같은 소스로 다시 저장하면 날짜만 바뀐다`() {
+    fun `읽은 커서를 advance 후 저장하면 날짜가 바뀐다`() {
         cursorRepository.save(IngestionCursor("I0030", LocalDate.of(2026, 11, 1), LocalDateTime.now()))
-        cursorRepository.save(IngestionCursor("I0030", LocalDate.of(2026, 11, 2), LocalDateTime.now()))
+        val cursor = cursorRepository.findById("I0030").get()
+
+        cursor.advance(LocalDate.of(2026, 11, 2), LocalDateTime.now())
+        cursorRepository.save(cursor)
 
         assertEquals(1, cursorRepository.count())
         assertEquals(LocalDate.of(2026, 11, 2), cursorRepository.findById("I0030").get().lastCollectedDate)

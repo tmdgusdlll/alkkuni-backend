@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
+import org.springframework.data.repository.findByIdOrNull
 import org.springframework.stereotype.Component
 import java.time.LocalDateTime
 
@@ -54,7 +55,10 @@ class InitialLoadJob(
             "$SERVICE 받은 신고번호 ${seen.size}건이 total_count ${totalCount}건과 다르다. 도중에 데이터가 바뀌었을 수 있으니 다시 실행한다."
         }
         // 증분 수집이 이어 받을 기준. 시작 시각 기준이라 적재 도중 바뀐 건도 다음 증분(커서 - 1일)이 다시 받는다.
-        cursorRepository.save(IngestionCursor(SERVICE, collectedAt.toLocalDate(), LocalDateTime.now()))
+        val now = LocalDateTime.now()
+        val cursor = cursorRepository.findByIdOrNull(SERVICE)?.apply { advance(collectedAt.toLocalDate(), now) }
+            ?: IngestionCursor(SERVICE, collectedAt.toLocalDate(), now)
+        cursorRepository.save(cursor)
         log.info("{} 초기 적재 완료: {}건, 새로 쓰거나 바뀐 제품 {}건", SERVICE, totalCount, changed)
     }
 
