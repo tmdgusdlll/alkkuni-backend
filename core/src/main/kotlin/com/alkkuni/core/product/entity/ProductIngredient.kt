@@ -37,7 +37,7 @@ class ProductIngredient(
     var rawName: String = rawName
         protected set
 
-    @Column(nullable = false, precision = 20, scale = 6)
+    @Column(nullable = false)
     var amount: BigDecimal = amount
         protected set
 
@@ -45,7 +45,7 @@ class ProductIngredient(
     var unit: String = unit
         protected set
 
-    @Column(nullable = false, precision = 20, scale = 6)
+    @Column(nullable = false)
     var basisAmount: BigDecimal = basisAmount
         protected set
 

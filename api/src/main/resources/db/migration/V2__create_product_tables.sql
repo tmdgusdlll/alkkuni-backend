@@ -28,10 +28,10 @@ CREATE TABLE product_ingredient (
     id                BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     product_id        BIGINT         NOT NULL REFERENCES product (id),
     ingredient_id     BIGINT         REFERENCES ingredient (id), -- 정규화 전, 사전에 없는 성분은 null
-    raw_name          VARCHAR(255)   NOT NULL,
-    amount            NUMERIC(20, 6) NOT NULL,
+    raw_name          TEXT           NOT NULL,  -- 구분자 없는 원문은 이름 길이에 상한이 없다
+    amount            NUMERIC        NOT NULL,  -- 정밀도 미지정: CFU 15자리·극소량도 반올림 없이 원문 그대로
     unit              VARCHAR(20)    NOT NULL,
-    basis_amount      NUMERIC(20, 6) NOT NULL,
+    basis_amount      NUMERIC        NOT NULL,
     basis_unit        VARCHAR(20)    NOT NULL,
     extraction_method VARCHAR(20)    NOT NULL,
     parser_version    VARCHAR(20)    NOT NULL       -- 재파싱 대상 판단용

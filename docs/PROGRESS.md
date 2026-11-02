@@ -28,6 +28,7 @@
 1. 수집 배치(API 클라이언트 → 초기 적재 → 증분 → 회수)
    - 정할 것: 로컬 원본 저장소(파일 시스템 추천, 운영은 S3)
    - 판정 규칙: `unreadLines` 또는 `AmountSanityCheck.issues()`가 있으면 `NEEDS_REVIEW`, 함량 0건이면 `NO_AMOUNT`. 재파싱은 `REVIEWED`를 덮어쓰지 않는다(엔티티 메서드로 두면 DB 없이 단위 테스트 가능)
+   - 성분 행 멱등: `product_ingredient`에는 자연키 유니크가 없다(원문에 같은 이름이 두 번 나올 수 있어 `(product_id, raw_name)`도 키가 못 됨). 재처리는 제품 단위로 기존 행 삭제 + 재삽입을 한 트랜잭션에서 한다. 검증: 같은 원본을 두 번 적재해도 행 수가 같다
    - `ProductIngredient.ingredientId`는 지금 `protected set`. 정규화 단계에서 `linkIngredient(id)` 같은 메서드로 연다
    - Spring Batch는 쓰지 않고 `@Scheduled` + PostgreSQL advisory lock으로 시작. 재시작·청크가 필요해지면 도입
 2. 1일 기준 환산: 분모(기준 중량)와 섭취방법(`NTK_MTHD`) 연결, 1일 함량 = 함량 × (1일 섭취 중량 ÷ 분모)
@@ -84,7 +85,8 @@
   - 패키지는 기능별: `core.product`(Product, ProductIngredient, enum), `core.ingredient`, `core.ingestion`.
   - `ProductIngredient`는 `@ManyToOne` 대신 `productId: Long`, `ingredientId: Long?` 값만 둔다. 처음 가이드는 `@ManyToOne(LAZY)` 단방향이었으나 사용자 제안으로 바꿈. 배치 대량 저장 때 프록시 없이 id만 넣으면 되고, 조회는 제품 id 기준이라 객체 탐색이 필요 없다. 참조 무결성은 V2의 FK 제약이 지킨다. 정리: 노션 「ProductIngredient: @ManyToOne 대신 FK 값만 보관」
   - `ingredient_id`가 null인 경우: 정규화 전, 또는 정규화 후에도 사전에 없는 성분(억지로 붙이면 틀린 비교가 됨).
-  - 함량·기준량은 `NUMERIC(20,6)`/`BigDecimal`. 리뷰에서 `Int`로 쓴 것을 잡음(2.4μg 같은 소수 함량이 잘림).
+  - 함량·기준량은 정밀도 미지정 `NUMERIC`/`BigDecimal`. 엔티티 리뷰에서 `Int`로 쓴 것을 잡음(2.4μg 같은 소수 함량이 잘림). 처음엔 `NUMERIC(20,6)`이었으나 `/code-review`에서 CFU 15자리 오버플로·소수 7자리 반올림을 지적받아 정밀도를 뺐다. `raw_name`도 같은 리뷰에서 `VARCHAR(255)` → `TEXT`(구분자 없는 원문은 이름 길이 상한이 없음).
+  - `/code-review` 지적 중 확신도·원문 누락은 결정(2026-10-30)과 문서가 어긋난 것이라 `REVIEW.md`·`PLANNING.md` 문구를 지금 결정에 맞춤. 성분 행 멱등은 수집 배치 PR에서, `Ingredient.defaultUnit`·`Product.status` 변경 메서드는 쓰는 곳이 생길 때 추가.
   - `var` 필드는 모두 `protected set`. `kotlin-jpa`/`allOpen`이 프로퍼티를 open으로 만들어 `private set`은 쓸 수 없다.
   - V2는 `erd.sql`에서 `raw_text`·`confidence`·`review_status`를 빼고 `parse_status`·`parse_issue`를 더했다. ID는 `GENERATED ALWAYS AS IDENTITY`. PostgreSQL은 FK에 인덱스를 만들지 않아 `product_ingredient.product_id` 인덱스를 추가. 제품명 `pg_trgm` GIN 인덱스는 검색 기능 때 V3로.
   - api·batch에 `ddl-auto: validate`. Flyway는 api에만 있어, 새 DB나 새 마이그레이션은 api가 먼저 적용해야 batch가 뜬다. batch에도 Flyway를 넣는 방법은 지금은 필요 없어 보류.
