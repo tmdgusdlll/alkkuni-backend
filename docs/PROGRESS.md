@@ -3,7 +3,8 @@
 알꾼이 백엔드의 진행 상황이다. **작업 PR 안에서 갱신하고, 머지되면 확정된다.** 머지 후 문서만 고치는 변경을 만들지 않는다.
 
 - PR을 올리기 전: 작업 커밋에 결정 이유, 다음 할 일 정리 등 이미 아는 내용을 넣는다.
-- PR을 올린 뒤 머지 전: CI 결과, PR 번호처럼 PR이 있어야 아는 내용만 같은 브랜치에 커밋을 더한다.
+- PR을 올린 뒤 머지 전: PR 번호는 PR 생성 후 첫 커밋(보통 `/code-review` 반영 커밋)에 함께 넣는다. 반영할 게 없을 때만 번호 커밋을 따로 한다.
+- CI 결과는 적지 않는다. `build`가 필수 체크라 머지됐다는 것 자체가 통과를 뜻한다. 실패를 고친 경우처럼 남길 이야기가 있을 때만 적는다.
 
 
 - 지금 상태: 이번 주차 목차. 체크 안 된 첫 항목이 다음 작업이다. 해당 PR에서 체크한다.
@@ -18,19 +19,20 @@
 - [x] 검수 대상 판단: 못 읽은 줄, 함량 이상치 (PR #9)
 - [x] V2 마이그레이션: `Product`, `Ingredient`, `ProductIngredient`, `IngestionCursor` (PR #10)
 - [x] 식약처 API 클라이언트 (`RESULT.CODE` 해석, `INFO-320`이면 재시도 없이 중단) (PR #11)
-- [ ] 초기 적재: 파일 방식 → 원본 저장 → 파싱 → 멱등 upsert
+- [x] 초기 적재: 페이징 → 원본 저장 → 파싱 → 멱등 upsert, 건수 확인
 - [ ] `CHNG_DT` 증분 수집
 - [ ] 회수 수집 (I0490 스냅샷 비교, 빠진 건은 상태만 변경)
 - [ ] 배포 준비: 도메인 확보, SES 샌드박스 해제·소셜 로그인 검수 기간 확인
 
 ## 다음 할 일
 
-1. 수집 배치(API 클라이언트 → 초기 적재 → 증분 → 회수)
-   - 정할 것: 로컬 원본 저장소(파일 시스템 추천, 운영은 S3)
-   - 판정 규칙: `unreadLines` 또는 `AmountSanityCheck.issues()`가 있으면 `NEEDS_REVIEW`, 함량 0건이면 `NO_AMOUNT`. 재파싱은 `REVIEWED`를 덮어쓰지 않는다(엔티티 메서드로 두면 DB 없이 단위 테스트 가능)
-   - 성분 행 멱등: `product_ingredient`에는 자연키 유니크가 없다(원문에 같은 이름이 두 번 나올 수 있어 `(product_id, raw_name)`도 키가 못 됨). 재처리는 제품 단위로 기존 행 삭제 + 재삽입을 한 트랜잭션에서 한다. 검증: 같은 원본을 두 번 적재해도 행 수가 같다
+1. 수집 배치(증분 → 회수)
    - `ProductIngredient.ingredientId`는 지금 `protected set`. 정규화 단계에서 `linkIngredient(id)` 같은 메서드로 연다
-   - Spring Batch는 쓰지 않고 `@Scheduled` + PostgreSQL advisory lock으로 시작. 재시작·청크가 필요해지면 도입
+   - Spring Batch는 쓰지 않고 `@Scheduled` + PostgreSQL advisory lock으로 시작. 재시작·청크가 필요해지면 도입. 초기 적재는 수동 1회라 `alkkuni.job=initial-load` 프로퍼티로 켜는 `ApplicationRunner`로 뒀다
+   - 증분도 `ProductUpserter`를 그대로 쓴다. 커서(`ingestion_cursor`) 저장은 증분 PR에서
+   - 운영 원본 저장은 S3. 지금 `RawStore`는 로컬 파일 시스템만(3주차 배포 때)
+   - 규칙을 바꿔도 이미 적재된 제품에는 반영되지 않는다. upsert가 원본 해시가 같으면 건너뛰기 때문이다(이번 `raw_material` 수정도 로컬 DB를 비우고 다시 적재함). 규칙을 바꾸면 `IngredientAmountParser.VERSION`을 올리고, `product.parser_version`이 옛 버전인 제품을 DB의 `standard_text`로 재판정하는 작업을 돌린다(`REVIEWED`는 제외). 작업은 첫 규칙 변경 때 만든다. 운영 첫 적재 전까지는 버전을 올리지 않아도 된다
+   - 파서: 최종제품 표기 변형 때문에 성분명이 `제품성`, `… (최종 제품)`으로 들어간 행이 있다. `finalProduct` 표시 제거가 `최종제품`만 지운다
    - 증분: 오늘 날짜 `CHNG_DT`는 19시 전에 부르면 `INFO-700`(지금은 `FoodSafetyApiException`). 수집일이 오늘이 되지 않게 하거나 `INFO-700`을 따로 처리한다
    - 회수: I0490 `total_count`가 391인데 행은 390개(1~1000 한 번 호출, `RTRVLDSUSE_SEQ` 중복 없음). 스냅샷 비교 때 "빠진 건"으로 오판하지 않는지 확인한다
    - 네트워크 오류 재시도는 넣지 않았다. 매일 스케줄이 다음 날 다시 받는다. 초기 적재처럼 길게 도는 작업에서 문제가 되면 추가
@@ -55,6 +57,7 @@
 
 ## 완료
 
+- [x] I0030 초기 적재(`InitialLoadJob`, `ProductUpserter`, 로컬 `RawStore`), 로컬 DB에 46,154건 적재 확인 (2026-11-02)
 - [x] 식약처 API 클라이언트(batch `FoodSafetyClient`, `RestClient`), 실제 API 확인 (PR #11, 2026-11-02)
 - [x] V2 마이그레이션(`product`, `ingredient`, `product_ingredient`, `ingestion_cursor`)과 core 엔티티 4개·enum 3개, api·batch `ddl-auto: validate` (PR #10, 2026-11-02)
 - [x] 성분 함량 규칙 파서(`core`의 `IngredientAmountParser`)와 골든 테스트, 규칙 대상 194개 중 191개 정답(남은 3개는 원문 표기 오류) (2026-10-30)
@@ -87,6 +90,17 @@
 ## 작업 로그
 
 ### 2026-11-02
+- 초기 적재 (`feat/initial-load`).
+  - 방식을 파일 방식에서 페이징으로 바꿈. 시간당 100회(식품안전나라 안내상 낮에는 300회) 한도에서 전체가 47회라 한 번에 받는다. 파일 방식은 CSV 읽기·파일 받기·행 변환이 새로 필요해서 미룸. 페이징 경계에서 행이 빠지는 문제는 받은 신고번호 수를 `total_count`와 비교해 실패로 끝내고, 멱등이라 다시 돌린다. "목록에 없으면 삭제"로 판단하는 전체 대사는 경계 누락을 삭제로 오판하므로 파일 방식으로 남김(`PLANNING.md`).
+  - 원본 저장: `RawStore`가 페이지 응답 본문을 `data/raw/{service}/{수집 시각}/page_NNN.json`에 그대로 남긴다(`.gitignore`). 가공 전에 먼저 저장. 운영 S3는 배포 때.
+  - 판정은 `Product.applyParse`: 못 읽은 줄 또는 이상치 → `NEEDS_REVIEW`(사유를 `parse_issue`에), 함량 0건 → `NO_AMOUNT`. `REVIEWED`는 원문이 같으면 그대로 두고, 원문이 바뀌면 옛 원문 기준 검수라 다시 판정한다. 기준규격은 이 메서드로만 바뀐다.
+  - upsert: 페이지(1000건) 단위 트랜잭션, 신고번호로 기존 제품을 한 번에 읽는다. `source_hash`(적재에 쓰는 값만 SHA-256)가 같으면 건너뛴다. 성분 행은 제품 단위로 JPQL delete 한 번 + 재삽입.
+  - `product.parser_version`(V3) 추가: 판정 버전이 성분 행에만 있으면 함량 0건 제품(1,062개, 원료성 제품 대부분)은 재판정 대상으로 찾을 수 없다. 운영 데이터가 생기기 전이라 지금 넣음. 함량 행의 `parser_version`은 그대로 둔다.
+  - `raw_material`: 원료성 기준만 있고 최종제품 기준이 없는 제품(로컬 적재 305건). 최종제품은 `최종 제품`(띄어쓰기)·`제품성`으로도 적어서 함께 인식한다(처음 규칙은 이 39건을 원료로 잘못 판정). "(원료성)"이 중금속 기준에만 붙은 29건은 실제 원료가 섞여 있어 원료로 둔다. 이 값을 검색·비교에서 어떻게 쓸지는 검색 기능 때 정한다. 파서 버전은 `IngredientAmountParser.VERSION = "1"`.
+  - 실행: `./gradlew :batch:bootRun --args='--alkkuni.job=initial-load'`. 새 DB는 api를 먼저 띄워 Flyway를 적용해야 한다.
+  - 테스트: `ProductTest` 6개(판정 규칙, DB 없음), `ProductUpserterTest` 3개(Testcontainers, 두 번 넣어도 행 수 같음·원문 변경 시 성분 교체·검수 보존). 삭제를 빼면 실패하는 것 확인. batch는 Flyway가 없어 테스트에서만 api 마이그레이션 파일로 스키마를 만든다.
+  - 실제 적재: 46,154건, 성분 행 160,155개. `NEEDS_REVIEW` 300(PR #9 결과 299와 같은 수준), `NO_AMOUNT` 1,062, `PARSED` 44,792. 전체 81초.
+  - 첫 실행이 42페이지 뒤 15분 멈췄다. 원인은 API가 아니라 맥 유휴 잠자기(`pmset -g log`: 18:54:06 잠듦 → 19:09:35 깨어남). Spring의 `read-timeout`은 요청 하나의 전체 시간 타이머(`JdkClientHttpRequest$TimeoutHandler`)인데 JVM 단조 시계라 잠든 동안 흐르지 않아 안 끊긴 게 맞다. 깨어난 21초 동안 43~46페이지를 받고 다시 잠들어 47페이지 중 중단됐다. 다시 돌리니 바뀐 제품 154건(남은 1페이지)만 썼다. 실제 데이터로 멱등 확인. 로컬에서 길게 돌릴 때는 `caffeinate -i`로 실행한다. EC2는 잠들지 않아 운영과는 무관.
 - 식약처 API 클라이언트 (`feat/foodsafety-client`, PR #11). CI `build` 통과(1분 1초), CodeRabbit은 수동 요청이라 건너뜀. batch에 `spring-boot-starter-restclient`만 추가(웹 서버 없음).
   - `fetchPage`가 `RESULT.CODE`를 해석: `INFO-000` 페이지, `INFO-200` 빈 페이지, `INFO-320` `FoodSafetyRateLimitException`(재시도 없음), 나머지 `FoodSafetyApiException`. `forEachPage`가 1000건씩 끝까지 받는다. 페이지에 응답 본문(`rawBody`)을 담아 원본 저장에 그대로 쓴다.
   - 인증키가 URL 경로에 들어가 네트워크 오류 메시지에 섞인다. 메시지에서 키를 가리고 원인 예외는 붙이지 않는다. 마스킹을 빼면 테스트가 실패하는 것 확인.

@@ -47,3 +47,6 @@ out/
 
 ### macOS ###
 .DS_Store
+
+### 수집 원본 (로컬 RawStore) ###
+/data/

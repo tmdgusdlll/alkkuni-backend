@@ -23,6 +23,9 @@ data class ParseResult(
 // 정확도는 골든 테스트(IngredientAmountParserGoldenTest)로 지킨다.
 object IngredientAmountParser {
 
+    // 규칙을 바꾸면 올린다. product_ingredient.parser_version에 남아 재파싱 대상을 고르는 데 쓴다.
+    const val VERSION = "1"
+
     // (?U): 원문의 전각 공백·숫자도 \s·\d로 잡는다.
     // 쉼표는 세 자리 구분일 때만 받는다. "1,5g", "2,25g"은 소수점인지 오타인지 알 수 없어 추측하지 않고 버린다.
     private const val NUMBER = """(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?"""
@@ -52,6 +55,8 @@ object IngredientAmountParser {
     // "원료성 제품 - 표시량(…)", "원료-표시량(…)" 줄. 원료 값은 소비자 제품 비교에 쓰지 않는다.
     private val rawMaterial = Regex("""원료성|원료\s*-""")
     // "최종제품 : 7mg/g", "2.최종제품:진세노사이드 … 표시량(…)"에서 표시를 지우고 나머지로 성분명을 찾는다.
+    // 최종제품 기준이 있는지 판단할 때 쓰는 표기. "최종제품", "최종 제품", "제품성".
+    private val finalProductSpec = Regex("""최종\s*제품|제품성""")
     private val finalProduct = Regex("""(?U)\*?최종제품\s*[:：-]?\s*""")
     // 한 줄에 함량이 여럿이면 두 번째부터는 마지막 괄호·쉼표·빗금 뒤가 성분명이다. "(유산균 4,000,000,000 cfu/g, 비피더스균 …"
     private val nameSeparator = Regex("""[(),\[\]/]""")
@@ -86,6 +91,13 @@ object IngredientAmountParser {
         }
         return ParseResult(amounts, unreadLines)
     }
+
+    // 원료성 기준만 있고 최종제품 기준이 없으면 원료로 파는 제품이다(I0030 46,057건 중 307건).
+    // 최종제품 기준도 있으면 완제품으로도 팔리므로 원료성 제품으로 보지 않는다.
+    // 최종제품은 "최종 제품"(띄어쓰기), "제품성"으로도 적는다(39건). finalProduct는 파싱용 표시 제거라 따로 둔다.
+    // "납(mg/kg) : 1.0 이하 (원료성)"처럼 중금속 기준에만 붙은 경우(29건)도 원료로 본다. 이름에 "(원료)"가 붙은 실제 원료가 섞여 있어 규칙으로 가르지 않는다.
+    fun isRawMaterialOnly(standardText: String): Boolean =
+        rawMaterial.containsMatchIn(standardText) && !finalProductSpec.containsMatchIn(standardText)
 
     // 느슨한 모양 중 엄격한 패턴 매치 안에 들어가지 않는 것이 있으면 못 읽은 줄이다.
     // 엄격한 패턴으로 잡고 일부러 버린 값(오염물질 mg/kg, 이하 상한, 세균수)은 못 읽은 것이 아니다.
