@@ -17,7 +17,7 @@
 - [x] 성분 함량 규칙 파서 + 골든 테스트 (PR #8)
 - [x] 검수 대상 판단: 못 읽은 줄, 함량 이상치 (PR #9)
 - [x] V2 마이그레이션: `Product`, `Ingredient`, `ProductIngredient`, `IngestionCursor` (PR #10)
-- [x] 식약처 API 클라이언트 (`RESULT.CODE` 해석, `INFO-320`이면 재시도 없이 중단)
+- [x] 식약처 API 클라이언트 (`RESULT.CODE` 해석, `INFO-320`이면 재시도 없이 중단) (PR #11)
 - [ ] 초기 적재: 파일 방식 → 원본 저장 → 파싱 → 멱등 upsert
 - [ ] `CHNG_DT` 증분 수집
 - [ ] 회수 수집 (I0490 스냅샷 비교, 빠진 건은 상태만 변경)
@@ -55,7 +55,7 @@
 
 ## 완료
 
-- [x] 식약처 API 클라이언트(batch `FoodSafetyClient`, `RestClient`), 실제 API 확인 (2026-11-02)
+- [x] 식약처 API 클라이언트(batch `FoodSafetyClient`, `RestClient`), 실제 API 확인 (PR #11, 2026-11-02)
 - [x] V2 마이그레이션(`product`, `ingredient`, `product_ingredient`, `ingestion_cursor`)과 core 엔티티 4개·enum 3개, api·batch `ddl-auto: validate` (PR #10, 2026-11-02)
 - [x] 성분 함량 규칙 파서(`core`의 `IngredientAmountParser`)와 골든 테스트, 규칙 대상 194개 중 191개 정답(남은 3개는 원문 표기 오류) (2026-10-30)
 - [x] 1주차 체크리스트: 멀티 모듈(PR #1), 로컬 DB·yaml 분리(PR #2), Flyway·Testcontainers(PR #5), CI(PR #6), CodeRabbit(PR #7)
@@ -87,7 +87,7 @@
 ## 작업 로그
 
 ### 2026-11-02
-- 식약처 API 클라이언트 (`feat/foodsafety-client`). batch에 `spring-boot-starter-restclient`만 추가(웹 서버 없음).
+- 식약처 API 클라이언트 (`feat/foodsafety-client`, PR #11). CI `build` 통과(1분 1초), CodeRabbit은 수동 요청이라 건너뜀. batch에 `spring-boot-starter-restclient`만 추가(웹 서버 없음).
   - `fetchPage`가 `RESULT.CODE`를 해석: `INFO-000` 페이지, `INFO-200` 빈 페이지, `INFO-320` `FoodSafetyRateLimitException`(재시도 없음), 나머지 `FoodSafetyApiException`. `forEachPage`가 1000건씩 끝까지 받는다. 페이지에 응답 본문(`rawBody`)을 담아 원본 저장에 그대로 쓴다.
   - 인증키가 URL 경로에 들어가 네트워크 오류 메시지에 섞인다. 메시지에서 키를 가리고 원인 예외는 붙이지 않는다. 마스킹을 빼면 테스트가 실패하는 것 확인.
   - 키는 `foodsafety.api-key: ${FOODSAFETY_API_KEY}`. 로컬 `.env`, 운영 Parameter Store. 비어 있으면 기동 실패.
