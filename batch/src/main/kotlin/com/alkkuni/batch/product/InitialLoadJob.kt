@@ -2,6 +2,8 @@ package com.alkkuni.batch.product
 
 import com.alkkuni.batch.foodsafety.FoodSafetyClient
 import com.alkkuni.batch.raw.RawStore
+import com.alkkuni.core.ingestion.entity.IngestionCursor
+import com.alkkuni.core.ingestion.repository.IngestionCursorRepository
 import org.slf4j.LoggerFactory
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
@@ -24,6 +26,7 @@ class InitialLoadJob(
     private val client: FoodSafetyClient,
     private val rawStore: RawStore,
     private val upserter: ProductUpserter,
+    private val cursorRepository: IngestionCursorRepository,
 ) : ApplicationRunner {
 
     override fun run(args: ApplicationArguments) {
@@ -50,6 +53,8 @@ class InitialLoadJob(
         check(seen.size == totalCount) {
             "$SERVICE 받은 신고번호 ${seen.size}건이 total_count ${totalCount}건과 다르다. 도중에 데이터가 바뀌었을 수 있으니 다시 실행한다."
         }
+        // 증분 수집이 이어 받을 기준. 시작 시각 기준이라 적재 도중 바뀐 건도 다음 증분(커서 - 1일)이 다시 받는다.
+        cursorRepository.save(IngestionCursor(SERVICE, collectedAt.toLocalDate(), LocalDateTime.now()))
         log.info("{} 초기 적재 완료: {}건, 새로 쓰거나 바뀐 제품 {}건", SERVICE, totalCount, changed)
     }
 

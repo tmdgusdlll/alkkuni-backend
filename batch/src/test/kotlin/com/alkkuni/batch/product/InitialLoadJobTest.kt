@@ -2,9 +2,11 @@ package com.alkkuni.batch.product
 
 import com.alkkuni.batch.foodsafety.FoodSafetyClient
 import com.alkkuni.batch.raw.RawStore
+import com.alkkuni.core.ingestion.repository.IngestionCursorRepository
 import com.alkkuni.core.product.repository.ProductIngredientRepository
 import com.alkkuni.core.product.repository.ProductRepository
 import org.mockito.Mockito.mock
+import org.mockito.Mockito.mockingDetails
 import org.springframework.boot.DefaultApplicationArguments
 import org.springframework.http.MediaType
 import org.springframework.test.web.client.MockRestServiceServer
@@ -31,7 +33,11 @@ class InitialLoadJobTest {
     ) {
         override fun upsert(rows: List<I0030Row>): Int = rows.size.also { rows.mapTo(received) { it.reportNo } }
     }
-    private val job = InitialLoadJob(client, RawStore(Files.createTempDirectory("raw")), upserter)
+    private val cursorRepository = mock(IngestionCursorRepository::class.java)
+    private val job = InitialLoadJob(client, RawStore(Files.createTempDirectory("raw")), upserter, cursorRepository)
+
+    // 커서 저장(save) 호출 수. 실패한 적재가 커서를 남기면 증분이 빠진 구간을 건너뛴다.
+    private fun cursorSaves() = mockingDetails(cursorRepository).invocations.count { it.method.name == "save" }
 
     @Test
     fun `도중에 total_count가 바뀌면 받은 개수가 맞아도 실패한다`() {
@@ -42,6 +48,7 @@ class InitialLoadJobTest {
 
         val e = assertFailsWith<IllegalStateException> { job.run(DefaultApplicationArguments()) }
         assertTrue(e.message!!.contains("total_count가 1001건에서 1000건으로"), e.message)
+        assertEquals(0, cursorSaves())
     }
 
     @Test
@@ -52,6 +59,7 @@ class InitialLoadJobTest {
         job.run(DefaultApplicationArguments())
 
         assertEquals(1001, received.size)
+        assertEquals(1, cursorSaves())
     }
 
     private fun expectPage(start: Int, end: Int, total: Int, reportNos: List<String>) {

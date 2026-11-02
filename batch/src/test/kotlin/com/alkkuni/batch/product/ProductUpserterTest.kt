@@ -1,5 +1,7 @@
 package com.alkkuni.batch.product
 
+import com.alkkuni.core.ingestion.entity.IngestionCursor
+import com.alkkuni.core.ingestion.repository.IngestionCursorRepository
 import com.alkkuni.core.parser.IngredientAmountParser
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -11,6 +13,7 @@ import org.springframework.test.context.ActiveProfiles
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import org.testcontainers.postgresql.PostgreSQLContainer
+import java.time.LocalDate
 import java.time.LocalDateTime
 import kotlin.test.assertEquals
 
@@ -26,6 +29,7 @@ import kotlin.test.assertEquals
 class ProductUpserterTest(
     @Autowired private val upserter: ProductUpserter,
     @Autowired private val jdbc: JdbcTemplate,
+    @Autowired private val cursorRepository: IngestionCursorRepository,
 ) {
     companion object {
         @Container
@@ -36,6 +40,16 @@ class ProductUpserterTest(
     @BeforeEach
     fun clean() {
         jdbc.execute("TRUNCATE product, product_ingredient")
+    }
+
+    // 커서는 같은 id로 새 객체를 save해 덮어쓴다(merge). 초기 적재 재실행·증분 갱신이 이 동작에 기댄다.
+    @Test
+    fun `커서를 같은 소스로 다시 저장하면 날짜만 바뀐다`() {
+        cursorRepository.save(IngestionCursor("I0030", LocalDate.of(2026, 11, 1), LocalDateTime.now()))
+        cursorRepository.save(IngestionCursor("I0030", LocalDate.of(2026, 11, 2), LocalDateTime.now()))
+
+        assertEquals(1, cursorRepository.count())
+        assertEquals(LocalDate.of(2026, 11, 2), cursorRepository.findById("I0030").get().lastCollectedDate)
     }
 
     @Test
