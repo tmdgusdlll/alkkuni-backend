@@ -16,7 +16,7 @@
 
 - [x] 성분 함량 규칙 파서 + 골든 테스트 (PR #8)
 - [x] 검수 대상 판단: 못 읽은 줄, 함량 이상치 (PR #9)
-- [x] V2 마이그레이션: `Product`, `Ingredient`, `ProductIngredient`, `IngestionCursor`
+- [x] V2 마이그레이션: `Product`, `Ingredient`, `ProductIngredient`, `IngestionCursor` (PR #10)
 - [ ] 식약처 API 클라이언트 (`RESULT.CODE` 해석, `INFO-320`이면 재시도 없이 중단)
 - [ ] 초기 적재: 파일 방식 → 원본 저장 → 파싱 → 멱등 upsert
 - [ ] `CHNG_DT` 증분 수집
@@ -50,7 +50,7 @@
 
 ## 완료
 
-- [x] V2 마이그레이션(`product`, `ingredient`, `product_ingredient`, `ingestion_cursor`)과 core 엔티티 4개·enum 3개, api·batch `ddl-auto: validate` (2026-11-02)
+- [x] V2 마이그레이션(`product`, `ingredient`, `product_ingredient`, `ingestion_cursor`)과 core 엔티티 4개·enum 3개, api·batch `ddl-auto: validate` (PR #10, 2026-11-02)
 - [x] 성분 함량 규칙 파서(`core`의 `IngredientAmountParser`)와 골든 테스트, 규칙 대상 194개 중 191개 정답(남은 3개는 원문 표기 오류) (2026-10-30)
 - [x] 1주차 체크리스트: 멀티 모듈(PR #1), 로컬 DB·yaml 분리(PR #2), Flyway·Testcontainers(PR #5), CI(PR #6), CodeRabbit(PR #7)
 - [x] CodeRabbit 연결(`.coderabbit.yaml`, 수동 리뷰), `@claude` 연동은 제외 (2026-10-29)
@@ -81,12 +81,13 @@
 ## 작업 로그
 
 ### 2026-11-02
-- V2 엔티티와 마이그레이션 (`feat/v2-entities`). 엔티티는 사용자가 직접 작성하고 Claude가 리뷰했다.
+- V2 엔티티와 마이그레이션 (`feat/v2-entities`, PR #10). 엔티티는 사용자가 직접 작성하고 Claude가 리뷰했다.
   - 패키지는 기능별: `core.product`(Product, ProductIngredient, enum), `core.ingredient`, `core.ingestion`.
   - `ProductIngredient`는 `@ManyToOne` 대신 `productId: Long`, `ingredientId: Long?` 값만 둔다. 처음 가이드는 `@ManyToOne(LAZY)` 단방향이었으나 사용자 제안으로 바꿈. 배치 대량 저장 때 프록시 없이 id만 넣으면 되고, 조회는 제품 id 기준이라 객체 탐색이 필요 없다. 참조 무결성은 V2의 FK 제약이 지킨다. 정리: 노션 「ProductIngredient: @ManyToOne 대신 FK 값만 보관」
   - `ingredient_id`가 null인 경우: 정규화 전, 또는 정규화 후에도 사전에 없는 성분(억지로 붙이면 틀린 비교가 됨).
   - 함량·기준량은 정밀도 미지정 `NUMERIC`/`BigDecimal`. 엔티티 리뷰에서 `Int`로 쓴 것을 잡음(2.4μg 같은 소수 함량이 잘림). 처음엔 `NUMERIC(20,6)`이었으나 `/code-review`에서 CFU 15자리 오버플로·소수 7자리 반올림을 지적받아 정밀도를 뺐다. `raw_name`도 같은 리뷰에서 `VARCHAR(255)` → `TEXT`(구분자 없는 원문은 이름 길이 상한이 없음).
   - `/code-review` 지적 중 확신도·원문 누락은 결정(2026-10-30)과 문서가 어긋난 것이라 `REVIEW.md`·`PLANNING.md` 문구를 지금 결정에 맞춤. 성분 행 멱등은 수집 배치 PR에서, `Ingredient.defaultUnit`·`Product.status` 변경 메서드는 쓰는 곳이 생길 때 추가.
+  - CI `build` 통과(1분 1초). CodeRabbit은 시간당 한도로 건너뜀.
   - `var` 필드는 모두 `protected set`. `kotlin-jpa`/`allOpen`이 프로퍼티를 open으로 만들어 `private set`은 쓸 수 없다.
   - V2는 `erd.sql`에서 `raw_text`·`confidence`·`review_status`를 빼고 `parse_status`·`parse_issue`를 더했다. ID는 `GENERATED ALWAYS AS IDENTITY`. PostgreSQL은 FK에 인덱스를 만들지 않아 `product_ingredient.product_id` 인덱스를 추가. 제품명 `pg_trgm` GIN 인덱스는 검색 기능 때 V3로.
   - api·batch에 `ddl-auto: validate`. Flyway는 api에만 있어, 새 DB나 새 마이그레이션은 api가 먼저 적용해야 batch가 뜬다. batch에도 Flyway를 넣는 방법은 지금은 필요 없어 보류.
