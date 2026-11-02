@@ -16,7 +16,7 @@
 
 - [x] 성분 함량 규칙 파서 + 골든 테스트 (PR #8)
 - [x] 검수 대상 판단: 못 읽은 줄, 함량 이상치 (PR #9)
-- [ ] V2 마이그레이션: `Product`, `Ingredient`, `ProductIngredient`, `IngestionCursor`
+- [x] V2 마이그레이션: `Product`, `Ingredient`, `ProductIngredient`, `IngestionCursor`
 - [ ] 식약처 API 클라이언트 (`RESULT.CODE` 해석, `INFO-320`이면 재시도 없이 중단)
 - [ ] 초기 적재: 파일 방식 → 원본 저장 → 파싱 → 멱등 upsert
 - [ ] `CHNG_DT` 증분 수집
@@ -25,20 +25,16 @@
 
 ## 다음 할 일
 
-1. V2 마이그레이션과 엔티티
-   - 정한 것: `Product.parseStatus`(`PARSED` / `NO_AMOUNT` / `NEEDS_REVIEW` / `REVIEWED`)와 `parseIssue`(이유 문자열 하나). 함량 0건 제품은 `product_ingredient` 행이 없어 구분할 곳이 제품뿐이다. 재파싱은 `REVIEWED`를 덮어쓰지 않는다
-   - 판정: `unreadLines` 또는 `AmountSanityCheck.issues()`가 있으면 `NEEDS_REVIEW`, 함량 0건이면 `NO_AMOUNT`
-   - `erd.sql`과 다른 점: `product_ingredient.confidence`·`review_status` 삭제, `ingredient_alias`·`unit_conversion`은 정규화 단계로 미룸
-   - api·batch yaml에 `spring.jpa.hibernate.ddl-auto: validate` 추가(지금은 기본값 `none`이라 검증이 돌지 않는다)
-   - 검증: Testcontainers에서 V2 적용, `ddl-auto=validate` 통과
-2. 수집 배치(API 클라이언트 → 초기 적재 → 증분 → 회수)
+1. 수집 배치(API 클라이언트 → 초기 적재 → 증분 → 회수)
    - 정할 것: 로컬 원본 저장소(파일 시스템 추천, 운영은 S3)
+   - 판정 규칙: `unreadLines` 또는 `AmountSanityCheck.issues()`가 있으면 `NEEDS_REVIEW`, 함량 0건이면 `NO_AMOUNT`. 재파싱은 `REVIEWED`를 덮어쓰지 않는다(엔티티 메서드로 두면 DB 없이 단위 테스트 가능)
+   - `ProductIngredient.ingredientId`는 지금 `protected set`. 정규화 단계에서 `linkIngredient(id)` 같은 메서드로 연다
    - Spring Batch는 쓰지 않고 `@Scheduled` + PostgreSQL advisory lock으로 시작. 재시작·청크가 필요해지면 도입
-3. 1일 기준 환산: 분모(기준 중량)와 섭취방법(`NTK_MTHD`) 연결, 1일 함량 = 함량 × (1일 섭취 중량 ÷ 분모)
+2. 1일 기준 환산: 분모(기준 중량)와 섭취방법(`NTK_MTHD`) 연결, 1일 함량 = 함량 × (1일 섭취 중량 ÷ 분모)
    - 정할 것: 분모의 정 수(`2400mg(2정)`, `5.0g 20정`)를 저장할지. 지금 파서는 버린다. 섭취방법이 정 수로만 적힌 제품(스파이크 200개 중 138개가 계산 불가)을 잇는 데 필요할 수 있다
    - 단위 환산도 이 단계: `억`·`X 10^n` 배수, `㎍/μg` 통일. `cells`(사균)와 `CFU`는 섞지 않는다
-4. 배포 준비: 도메인 확보, SES 샌드박스 해제·소셜 로그인 검수에 걸리는 기간 확인
-5. (3주차 첫 작업) ECR 푸시 → EC2 기본 배포. 배포가 처음 필요한 시점이 3주차 CloudFront라 미룸
+3. 배포 준비: 도메인 확보, SES 샌드박스 해제·소셜 로그인 검수에 걸리는 기간 확인
+4. (3주차 첫 작업) ECR 푸시 → EC2 기본 배포. 배포가 처음 필요한 시점이 3주차 CloudFront라 미룸
    - 정할 것: Dockerfile 방식(Boot `bootBuildImage` vs 직접 작성), OIDC IAM 역할 범위
    - 검증: EC2에서 `/actuator/health` UP
    - 확인: 운영 compose(또는 Dockerfile)에 `SPRING_PROFILES_ACTIVE=prod` 지정. 공통 yaml의 기본 프로필이 `local`이라 빠지면 `localhost` DB로 접속을 시도한다
@@ -48,10 +44,12 @@
    - 태그: `latest`와 `github.sha`를 함께 붙여 롤백할 이미지를 남긴다. 레이어 캐시는 `cache-from/to: type=gha`
    - 배포 job은 `concurrency`의 `cancel-in-progress: false`(중간에 끊기면 서버가 어중간한 상태로 남음)
    - 배포 후 `/actuator/health` UP 확인 단계로 끝낸다
+   - 기동 순서: api(Flyway) → 헬스 UP → batch. batch는 Flyway 없이 `ddl-auto=validate`만 하므로 새 마이그레이션이 적용되기 전에 뜨면 기동에 실패한다
    - jar artifact 전달은 Dockerfile 방식이 정해진 뒤 판단. 멀티 모듈이라 경로는 `api/build/libs`, `-plain.jar` 제외
 
 ## 완료
 
+- [x] V2 마이그레이션(`product`, `ingredient`, `product_ingredient`, `ingestion_cursor`)과 core 엔티티 4개·enum 3개, api·batch `ddl-auto: validate` (2026-11-02)
 - [x] 성분 함량 규칙 파서(`core`의 `IngredientAmountParser`)와 골든 테스트, 규칙 대상 194개 중 191개 정답(남은 3개는 원문 표기 오류) (2026-10-30)
 - [x] 1주차 체크리스트: 멀티 모듈(PR #1), 로컬 DB·yaml 분리(PR #2), Flyway·Testcontainers(PR #5), CI(PR #6), CodeRabbit(PR #7)
 - [x] CodeRabbit 연결(`.coderabbit.yaml`, 수동 리뷰), `@claude` 연동은 제외 (2026-10-29)
@@ -80,6 +78,17 @@
 - [ ] 상표(KIPRIS)와 도메인 확보
 
 ## 작업 로그
+
+### 2026-11-02
+- V2 엔티티와 마이그레이션 (`feat/v2-entities`). 엔티티는 사용자가 직접 작성하고 Claude가 리뷰했다.
+  - 패키지는 기능별: `core.product`(Product, ProductIngredient, enum), `core.ingredient`, `core.ingestion`.
+  - `ProductIngredient`는 `@ManyToOne` 대신 `productId: Long`, `ingredientId: Long?` 값만 둔다. 처음 가이드는 `@ManyToOne(LAZY)` 단방향이었으나 사용자 제안으로 바꿈. 배치 대량 저장 때 프록시 없이 id만 넣으면 되고, 조회는 제품 id 기준이라 객체 탐색이 필요 없다. 참조 무결성은 V2의 FK 제약이 지킨다. 정리: 노션 「ProductIngredient: @ManyToOne 대신 FK 값만 보관」
+  - `ingredient_id`가 null인 경우: 정규화 전, 또는 정규화 후에도 사전에 없는 성분(억지로 붙이면 틀린 비교가 됨).
+  - 함량·기준량은 `NUMERIC(20,6)`/`BigDecimal`. 리뷰에서 `Int`로 쓴 것을 잡음(2.4μg 같은 소수 함량이 잘림).
+  - `var` 필드는 모두 `protected set`. `kotlin-jpa`/`allOpen`이 프로퍼티를 open으로 만들어 `private set`은 쓸 수 없다.
+  - V2는 `erd.sql`에서 `raw_text`·`confidence`·`review_status`를 빼고 `parse_status`·`parse_issue`를 더했다. ID는 `GENERATED ALWAYS AS IDENTITY`. PostgreSQL은 FK에 인덱스를 만들지 않아 `product_ingredient.product_id` 인덱스를 추가. 제품명 `pg_trgm` GIN 인덱스는 검색 기능 때 V3로.
+  - api·batch에 `ddl-auto: validate`. Flyway는 api에만 있어, 새 DB나 새 마이그레이션은 api가 먼저 적용해야 batch가 뜬다. batch에도 Flyway를 넣는 방법은 지금은 필요 없어 보류.
+  - 검증: Testcontainers 컨텍스트 테스트에 V2 적용 확인 추가(api 테스트 4개 통과). 컬럼명을 일부러 틀려 `Schema validation: missing column`으로 실패하는 것도 확인.
 
 ### 2026-10-31
 - 검수 대상 판단 (`feat/parser-review-flags`, PR #9). V2 엔티티에서 `NEEDS_REVIEW`를 정하려면 파서가 "못 읽음"을 알려야 해서 엔티티보다 먼저 한다. 엔티티는 사용자가 직접 작성하기로 해서 다음 PR로 나눔.
