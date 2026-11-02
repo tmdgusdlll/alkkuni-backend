@@ -18,3 +18,8 @@ spring:
 # 식품안전나라 OpenAPI. 로컬은 루트 .env, 운영은 Parameter Store에서 환경변수로 주입한다.
 foodsafety:
   api-key: ${FOODSAFETY_API_KEY}
+
+alkkuni:
+  raw-store:
+    # 받은 응답 원본을 저장하는 디렉터리. bootRun은 레포 루트에서 돌아 루트의 data/raw가 된다.
+    dir: ${RAW_STORE_DIR:data/raw}

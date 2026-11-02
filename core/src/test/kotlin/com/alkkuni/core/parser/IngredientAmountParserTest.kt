@@ -2,6 +2,8 @@ package com.alkkuni.core.parser
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 // 전체 품목(I0030 46,057건)을 돌려 찾은 오추출 사례. 원문은 실제 기준규격에서 해당 줄만 가져왔다.
 class IngredientAmountParserTest {
@@ -156,6 +158,19 @@ class IngredientAmountParserTest {
             "(1)성상 : 암갈색의 액상\n(2)진세노사드 : 원료성 제품 - 표시량(1,0mg/g)이상",
         )) {
             assertEquals(emptyList(), IngredientAmountParser.parse(line).unreadLines, line)
+        }
+    }
+
+    @Test
+    fun `원료성 기준만 있으면 원료성 제품이고, 최종제품 기준이 어떤 표기로든 있으면 아니다`() {
+        // 실제 원문(홍삼농축액 계열)
+        assertTrue(IngredientAmountParser.isRawMaterialOnly("2. 진세노사이드 Rg1+Rb1+Rg3의 합 *원료성제품 표시량(30mg/g)의 100% 이상"))
+        for (text in listOf(
+            "(가) 원료성 : 표시량(3mg/g)이상 (나) 최종제품 표시량(3mg/g)의 80%이상",
+            "합(원료성 제품) : 표시량(8 mg/g) 이상 3. 합 (최종 제품) : 표시량(8 mg/ g)의 80% 이상",
+            "- 원료성: 표시량(20 ㎎/g)의 100 % 이상 - 제품성: 표시량(20 ㎎/g)의 80 % 이상",
+        )) {
+            assertFalse(IngredientAmountParser.isRawMaterialOnly(text), text)
         }
     }
 }

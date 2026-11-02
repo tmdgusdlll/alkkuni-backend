@@ -68,7 +68,8 @@ class FoodSafetyClient(
     /**
      * 처음부터 끝까지 [PAGE_SIZE]씩 받아 페이지마다 [action]을 부른다.
      * 위치(start/end)로 나눠 받으므로 도중에 행이 추가·삭제되면 경계의 행이 빠지거나 겹칠 수 있다.
-     * 그래서 수천 건 이상 전체를 받을 때는 쓰지 않는다(초기 적재는 파일 방식). 증분은 하루 겹침이 다시 받는다.
+     * 겹친 행은 upsert가 흡수한다. 빠진 행은 초기 적재가 받은 신고번호 수를 `total_count`와 비교해 잡고,
+     * 증분은 하루 겹침이 다시 받는다. "목록에 없으면 삭제"로 판단하는 전체 대사에는 쓰지 않는다(파일 방식).
      */
     fun forEachPage(service: String, changedSince: LocalDate? = null, action: (FoodSafetyPage) -> Unit) {
         var start = 1
