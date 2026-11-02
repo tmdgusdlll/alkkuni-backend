@@ -45,6 +45,16 @@ class AlkkuniApiApplicationTest(
         assertEquals(1, extensions)
     }
 
+    // 컨텍스트가 떴다는 것 자체가 ddl-auto=validate 통과(엔티티와 V2 테이블 일치)를 뜻한다.
+    @Test
+    fun `Flyway가 V2를 적용해 제품 테이블이 생긴다`() {
+        val versions = jdbcTemplate.queryForList(
+            "SELECT version FROM flyway_schema_history WHERE success",
+            String::class.java,
+        )
+        assertTrue("2" in versions, "V2가 적용되지 않음: $versions")
+    }
+
     @Test
     fun `pg_trgm이 한글을 글자로 인식해 trigram을 만든다`() {
         // 로케일이 C면 한글을 글자로 보지 않아 빈 배열이 나온다.
