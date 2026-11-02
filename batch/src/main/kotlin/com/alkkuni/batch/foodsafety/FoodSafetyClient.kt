@@ -4,10 +4,14 @@ import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
 import org.springframework.web.client.RestClient
 import org.springframework.web.client.RestClientException
+import org.springframework.web.client.RestClientResponseException
 import org.springframework.web.client.body
+import org.springframework.web.util.UriUtils
+import tools.jackson.core.JacksonException
 import tools.jackson.databind.JsonNode
 import tools.jackson.databind.json.JsonMapper
 import java.time.LocalDate
+import java.nio.charset.StandardCharsets
 import java.time.format.DateTimeFormatter
 
 /**
@@ -32,7 +36,13 @@ class FoodSafetyClient(
     /** [start]~[end] 행(1부터, 양끝 포함)을 받는다. [changedSince]를 주면 그날 이후 변경분만 온다. */
     fun fetchPage(service: String, start: Int, end: Int, changedSince: LocalDate? = null): FoodSafetyPage {
         val body = request(service, start, end, changedSince)
-        val root = jsonMapper.readTree(body)
+        val where = "$service $start-$end"
+        // 점검 안내 HTML처럼 JSON이 아닌 응답도 API 예외 하나로 받게 한다. 본문은 메시지에 넣지 않는다.
+        val root = try {
+            jsonMapper.readTree(body)
+        } catch (e: JacksonException) {
+            throw FoodSafetyApiException("$where: JSON이 아닌 응답")
+        }
         val serviceNode = root.path(service)
         // INFO-000·200·700은 서비스 객체 안에 RESULT가 온다. INFO-320 본문은 확인하지 못해 최상위도 본다.
         val result = serviceNode.path("RESULT").takeUnless { it.isMissingNode } ?: root.path("RESULT")
@@ -40,21 +50,25 @@ class FoodSafetyClient(
         val message = result.path("MSG").asString("")
 
         return when (code) {
-            "INFO-000" -> FoodSafetyPage(
-                totalCount = serviceNode.path("total_count").asString().toInt(),
-                rows = serviceNode.path("row").toList(),
-                rawBody = body,
-            )
+            "INFO-000" -> {
+                val totalCount = serviceNode.path("total_count").asString("").toIntOrNull()
+                    ?: throw FoodSafetyApiException("$where: total_count를 읽을 수 없음")
+                val rows = serviceNode.path("row")
+                // 배열이 아니면 객체의 필드값을 행으로 세게 된다. 잘못된 데이터를 넘기지 않고 멈춘다.
+                if (!rows.isArray) throw FoodSafetyApiException("$where: row가 배열이 아님")
+                FoodSafetyPage(totalCount = totalCount, rows = rows.toList(), rawBody = body)
+            }
             "INFO-200" -> FoodSafetyPage(totalCount = 0, rows = emptyList(), rawBody = body)
             // 재시도하면 한도만 더 쓴다. 호출한 쪽이 멈추도록 별도 예외로 던진다.
-            "INFO-320" -> throw FoodSafetyRateLimitException("$service $start-$end: $code $message")
-            else -> throw FoodSafetyApiException("$service $start-$end: $code $message")
+            "INFO-320" -> throw FoodSafetyRateLimitException("$where: $code $message")
+            else -> throw FoodSafetyApiException("$where: $code $message")
         }
     }
 
     /**
      * 처음부터 끝까지 [PAGE_SIZE]씩 받아 페이지마다 [action]을 부른다.
-     * 도중에 건수가 바뀌어 빠지는 행은 증분 수집의 하루 겹침(`CHNG_DT = 마지막 수집일 - 1일`)이 다시 받는다.
+     * 위치(start/end)로 나눠 받으므로 도중에 행이 추가·삭제되면 경계의 행이 빠지거나 겹칠 수 있다.
+     * 그래서 수천 건 이상 전체를 받을 때는 쓰지 않는다(초기 적재는 파일 방식). 증분은 하루 겹침이 다시 받는다.
      */
     fun forEachPage(service: String, changedSince: LocalDate? = null, action: (FoodSafetyPage) -> Unit) {
         var start = 1
@@ -81,12 +95,19 @@ class FoodSafetyClient(
             restClient.get().uri(path, variables).retrieve().body<String>()
                 ?: throw FoodSafetyApiException("$service $start-$end: 빈 응답")
         } catch (e: RestClientException) {
-            // 원인 예외는 붙이지 않는다. 메시지에 키가 든 URL이 있어 스택 트레이스로 새어 나간다.
-            throw FoodSafetyApiException(
-                "$service $start-$end: ${e.javaClass.simpleName} ${e.message?.replace(apiKey, "***")}",
-            )
+            // RestClient 예외 메시지에는 키가 든 URL이 들어간다. 그 메시지와 원인 예외를 쓰지 않고,
+            // HTTP 상태나 원인 예외의 종류·메시지만 남긴다.
+            val reason = when (e) {
+                is RestClientResponseException -> "HTTP ${e.statusCode.value()}"
+                else -> e.cause?.let { "${it.javaClass.simpleName} ${it.message}" } ?: e.javaClass.simpleName
+            }
+            throw FoodSafetyApiException("$service $start-$end: ${maskKey(reason)}")
         }
     }
+
+    // 원인 메시지에 혹시 URL이 섞여도 원래 키와 RestClient가 인코딩한 키(+ → %2B, = → %3D 등)를 모두 가린다.
+    private fun maskKey(text: String): String =
+        text.replace(apiKey, "***").replace(UriUtils.encode(apiKey, StandardCharsets.UTF_8), "***")
 
     companion object {
         const val BASE_URL = "https://openapi.foodsafetykorea.go.kr/api"
@@ -96,12 +117,17 @@ class FoodSafetyClient(
     }
 }
 
-/** 한 페이지 응답. [rawBody]는 원본 보존용 응답 본문 그대로다. */
-data class FoodSafetyPage(
+/**
+ * 한 페이지 응답. [rawBody]는 원본 보존용 응답 본문 그대로다.
+ * 본문이 수 MB라 로그에 통째로 찍히지 않게 data class 대신 toString을 직접 둔다.
+ */
+class FoodSafetyPage(
     val totalCount: Int,
     val rows: List<JsonNode>,
     val rawBody: String,
-)
+) {
+    override fun toString() = "FoodSafetyPage(totalCount=$totalCount, rows=${rows.size})"
+}
 
 open class FoodSafetyApiException(message: String) : RuntimeException(message)
 

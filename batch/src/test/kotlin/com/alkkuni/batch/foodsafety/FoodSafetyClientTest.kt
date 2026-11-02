@@ -5,6 +5,7 @@ import org.springframework.test.web.client.ExpectedCount.once
 import org.springframework.test.web.client.MockRestServiceServer
 import org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo
 import org.springframework.test.web.client.response.MockRestResponseCreators.withException
+import org.springframework.test.web.client.response.MockRestResponseCreators.withServerError
 import org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess
 import org.springframework.web.client.RestClient
 import tools.jackson.databind.json.JsonMapper
@@ -98,6 +99,53 @@ class FoodSafetyClientTest {
 
         assertFalse(e.message!!.contains(KEY), e.message)
         assertEquals(null, e.cause)
+    }
+
+    @Test
+    fun `특수문자가 든 키도 HTTP 오류 메시지에 남지 않는다`() {
+        val specialKey = "ab+cd/ef=="
+        val b = RestClient.builder()
+        val s = MockRestServiceServer.bindTo(b).build()
+        val c = FoodSafetyClient(b, JsonMapper.builder().build(), specialKey)
+        s.expect(requestTo("$BASE/ab%2Bcd%2Fef%3D%3D/I0030/json/1/1000")).andRespond(withServerError())
+
+        val e = assertFailsWith<FoodSafetyApiException> { c.fetchPage("I0030", 1, 1000) }
+
+        assertEquals("I0030 1-1000: HTTP 500", e.message)
+        assertEquals(null, e.cause)
+    }
+
+    @Test
+    fun `JSON이 아닌 응답은 API 예외다`() {
+        server.expect(requestTo("$BASE/$KEY/I0030/json/1/1000"))
+            .andRespond(withSuccess("<html>시스템 점검 중</html>", MediaType.TEXT_HTML))
+
+        val e = assertFailsWith<FoodSafetyApiException> { client.fetchPage("I0030", 1, 1000) }
+        assertFalse(e.message!!.contains("점검"), e.message)
+    }
+
+    @Test
+    fun `정상 코드인데 total_count가 없으면 API 예외다`() {
+        server.expect(requestTo("$BASE/$KEY/I0030/json/1/1000"))
+            .andRespond(json("""{"I0030":{"row":[],"RESULT":{"CODE":"INFO-000"}}}"""))
+
+        assertFailsWith<FoodSafetyApiException> { client.fetchPage("I0030", 1, 1000) }
+    }
+
+    @Test
+    fun `row가 배열이 아니면 API 예외다`() {
+        server.expect(requestTo("$BASE/$KEY/I0030/json/1/1000")).andRespond(
+            json("""{"I0030":{"total_count":"1","row":{"PRDLST_NM":"x"},"RESULT":{"CODE":"INFO-000"}}}"""),
+        )
+
+        assertFailsWith<FoodSafetyApiException> { client.fetchPage("I0030", 1, 1000) }
+    }
+
+    @Test
+    fun `페이지 toString에 응답 본문이 들어가지 않는다`() {
+        val page = FoodSafetyPage(totalCount = 1, rows = emptyList(), rawBody = "큰 본문")
+
+        assertEquals("FoodSafetyPage(totalCount=1, rows=0)", page.toString())
     }
 
     private fun json(body: String) = withSuccess(body, MediaType.APPLICATION_JSON)

@@ -9,7 +9,6 @@ dependencies {
     implementation(project(":core"))
     // 식약처 API 호출. 웹 서버 없이 RestClient만 쓴다.
     implementation("org.springframework.boot:spring-boot-starter-restclient")
-    implementation("tools.jackson.module:jackson-module-kotlin")
     runtimeOnly("org.postgresql:postgresql")
     testImplementation("org.springframework.boot:spring-boot-starter-restclient-test")
 }
