@@ -76,6 +76,31 @@ class ProductUpserterTest(
         assertEquals(1 to 2, counts())
     }
 
+    @Test
+    fun `원본이 같아도 판정 버전이 옛 것이면 다시 판정한다`() {
+        upserter.upsert(listOf(row("A", RAW_ONLY)))
+        // 옛 규칙으로 판정된 상태를 만든다: 버전이 다르고 원료 여부가 틀려 있다
+        jdbc.update("UPDATE product SET parser_version = '0', raw_material = false")
+
+        assertEquals(1, upserter.upsert(listOf(row("A", RAW_ONLY))))
+
+        assertEquals(true, jdbc.queryForObject("SELECT raw_material FROM product", Boolean::class.java))
+        assertEquals(
+            IngredientAmountParser.VERSION,
+            jdbc.queryForObject("SELECT parser_version FROM product", String::class.java),
+        )
+        // 같은 버전이 되면 다시 건너뛴다
+        assertEquals(0, upserter.upsert(listOf(row("A", RAW_ONLY))))
+    }
+
+    @Test
+    fun `한 페이지에 같은 신고번호가 두 번 와도 제품은 하나다`() {
+        upserter.upsert(listOf(row("A", VITAMIN), row("A", VITAMIN, name = "뒤의 행")))
+
+        assertEquals("뒤의 행", jdbc.queryForObject("SELECT name FROM product", String::class.java))
+        assertEquals(1 to 2, counts())
+    }
+
     private fun counts() =
         jdbc.queryForObject("SELECT count(*) FROM product", Int::class.java)!! to
             jdbc.queryForObject("SELECT count(*) FROM product_ingredient", Int::class.java)!!
@@ -89,5 +114,6 @@ class ProductUpserterTest(
         sourceUpdatedAt = LocalDateTime.of(2026, 11, 1, 0, 0),
     )
 
+    private val RAW_ONLY = "2. 진세노사이드 Rg1+Rb1+Rg3의 합 *원료성제품 표시량(30mg/g)의 100% 이상"
     private val VITAMIN = "2.감마리놀렌산 : 표시량(240mg/2g)의 80~120%\n3.비타민E : 표시량(17mg/2g)의 80~150%"
 }

@@ -20,7 +20,8 @@ data class I0030Row(
     val sourceUpdatedAt: LocalDateTime?,
 ) {
     // 적재에 쓰는 값이 하나라도 바뀌면 달라진다. 같으면 upsert가 그 행을 건너뛴다.
-    // 원본 JSON 전체가 아니라 쓰는 값만 넣는다. 안 쓰는 필드 변경으로 재파싱하지 않고, 파일 방식(CSV)과도 같은 값이 나온다.
+    // 원본 JSON 전체가 아니라 쓰는 값만 넣어 파일 방식(CSV)과도 같은 값이 나오게 한다.
+    // 수정일(LAST_UPDT_DTM)이 들어가므로 안 쓰는 필드만 바뀌어도 수정일이 바뀌면 다시 쓴다. 하루 수십 건이라 그대로 둔다.
     val sourceHash: String by lazy {
         val joined = listOf(reportNo, name, manufacturer, intakeMethod, standardText, sourceUpdatedAt)
             .joinToString("\u0000") { it?.toString() ?: "" }

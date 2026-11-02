@@ -61,6 +61,13 @@ class ProductTest {
         assertEquals(IngredientAmountParser.VERSION, product.parserVersion)
     }
 
+    @Test
+    fun `원료 여부도 applyParse가 기준규격으로 정한다`() {
+        assertTrue(apply("2. 진세노사이드 합 *원료성제품 표시량(30mg/g)의 100% 이상").rawMaterial)
+        assertFalse(apply("(가) 원료성 : 표시량(3mg/g)이상 (나) 최종제품 표시량(3mg/g)의 80%이상").rawMaterial)
+        assertFalse(apply(null).rawMaterial)
+    }
+
     private fun apply(text: String?) = newProduct(ParseStatus.NO_AMOUNT).apply {
         assertTrue(applyParse(text, IngredientAmountParser.parse(text ?: "")))
     }

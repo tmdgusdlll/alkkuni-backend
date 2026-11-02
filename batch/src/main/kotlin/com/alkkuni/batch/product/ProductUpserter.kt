@@ -23,22 +23,26 @@ class ProductUpserter(
     /** 한 페이지를 한 트랜잭션으로 저장한다. 바뀌어서 다시 쓴 제품 수를 돌려준다. */
     @Transactional
     fun upsert(rows: List<I0030Row>): Int {
-        val existing = productRepository.findAllByReportNoIn(rows.map { it.reportNo }).associateBy { it.reportNo }
+        // 한 페이지에 같은 신고번호가 두 번 오면 둘 다 새 제품으로 INSERT돼 UNIQUE 위반으로 페이지 전체가 실패한다.
+        // 전체 데이터엔 중복이 없지만 한 줄로 막을 수 있어 뒤의 행을 남긴다.
+        val uniqueRows = rows.associateBy { it.reportNo }.values
+        val existing = productRepository.findAllByReportNoIn(uniqueRows.map { it.reportNo }).associateBy { it.reportNo }
         var changed = 0
-        for (row in rows) {
+        for (row in uniqueRows) {
             val found = existing[row.reportNo]
-            if (found?.sourceHash == row.sourceHash) continue
+            // 원본도 같고 판정 규칙 버전도 같을 때만 건너뛴다.
+            // 규칙을 바꿔 VERSION을 올리면 다시 적재하는 것만으로 재판정된다(검수한 제품은 applyParse가 지킨다).
+            if (found?.sourceHash == row.sourceHash && found.parserVersion == IngredientAmountParser.VERSION) continue
 
-            val rawMaterial = row.standardText?.let(IngredientAmountParser::isRawMaterialOnly) ?: false
-            // 새 제품은 기준규격 없이 만들고, 기준규격과 판정은 applyParse가 채운다.
+            // 새 제품은 기준규격 없이 만들고, 기준규격과 판정(원료 여부 포함)은 applyParse가 채운다.
             val product = found?.apply {
-                updateSource(row.name, row.manufacturer, row.intakeMethod, rawMaterial, row.sourceHash, row.sourceUpdatedAt)
+                updateSource(row.name, row.manufacturer, row.intakeMethod, row.sourceHash, row.sourceUpdatedAt)
             } ?: Product(
                 reportNo = row.reportNo,
                 name = row.name,
                 manufacturer = row.manufacturer,
                 intakeMethod = row.intakeMethod,
-                rawMaterial = rawMaterial,
+                rawMaterial = false,
                 sourceHash = row.sourceHash,
                 sourceUpdatedAt = row.sourceUpdatedAt,
                 parseStatus = ParseStatus.NO_AMOUNT,

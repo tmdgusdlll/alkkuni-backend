@@ -78,19 +78,18 @@ class Product(
     var parserVersion: String = parserVersion
         protected set
 
-    // 기준규격(standardText)과 파싱 판정은 applyParse로만 바꾼다. 검수 결과를 지키는 규칙이 거기 있다.
+    // 기준규격(standardText)과 그로부터 정하는 값(판정, 원료 여부, 판정 버전)은 applyParse로만 바꾼다.
+    // 규칙이 바뀌어 다시 판정할 때 applyParse 하나만 부르면 모두 새 규칙으로 맞춰진다.
     fun updateSource(
         name: String,
         manufacturer: String?,
         intakeMethod: String?,
-        rawMaterial: Boolean,
         sourceHash: String,
         sourceUpdatedAt: LocalDateTime?,
     ) {
         this.name = name
         this.manufacturer = manufacturer
         this.intakeMethod = intakeMethod
-        this.rawMaterial = rawMaterial
         this.sourceHash = sourceHash
         this.sourceUpdatedAt = sourceUpdatedAt
     }
@@ -104,6 +103,7 @@ class Product(
         if (parseStatus == ParseStatus.REVIEWED && standardText == this.standardText) return false
         val issues = result.unreadLines.map { "못 읽은 줄: $it" } + AmountSanityCheck.issues(result.amounts)
         this.standardText = standardText
+        rawMaterial = standardText?.let(IngredientAmountParser::isRawMaterialOnly) ?: false
         parseStatus = when {
             issues.isNotEmpty() -> ParseStatus.NEEDS_REVIEW
             result.amounts.isEmpty() -> ParseStatus.NO_AMOUNT
