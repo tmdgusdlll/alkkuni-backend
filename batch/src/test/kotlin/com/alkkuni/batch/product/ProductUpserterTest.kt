@@ -39,7 +39,7 @@ class ProductUpserterTest(
 
     @BeforeEach
     fun clean() {
-        jdbc.execute("TRUNCATE product, product_ingredient")
+        jdbc.execute("TRUNCATE product, product_ingredient, ingestion_cursor")
     }
 
     // 잡은 트랜잭션 밖에서 커서를 읽고(advance) save한다. 분리된 객체의 변경이 DB에 반영되는지 확인한다.

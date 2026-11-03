@@ -1,6 +1,7 @@
 package com.alkkuni.batch.product
 
 import com.alkkuni.batch.foodsafety.FoodSafetyClient
+import com.alkkuni.batch.noLock
 import com.alkkuni.batch.raw.RawStore
 import com.alkkuni.core.ingestion.repository.IngestionCursorRepository
 import com.alkkuni.core.product.repository.ProductIngredientRepository
@@ -15,6 +16,7 @@ import org.springframework.test.web.client.response.MockRestResponseCreators.wit
 import org.springframework.web.client.RestClient
 import tools.jackson.databind.json.JsonMapper
 import java.nio.file.Files
+import java.time.Clock
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -34,7 +36,9 @@ class InitialLoadJobTest {
         override fun upsert(rows: List<I0030Row>): Int = rows.size.also { rows.mapTo(received) { it.reportNo } }
     }
     private val cursorRepository = mock(IngestionCursorRepository::class.java)
-    private val job = InitialLoadJob(client, RawStore(Files.createTempDirectory("raw")), upserter, cursorRepository)
+    private val job = InitialLoadJob(
+        client, RawStore(Files.createTempDirectory("raw")), upserter, cursorRepository, noLock(), Clock.systemDefaultZone(),
+    )
 
     // 커서 저장(save) 호출 수. 실패한 적재가 커서를 남기면 증분이 빠진 구간을 건너뛴다.
     private fun cursorSaves() = mockingDetails(cursorRepository).invocations.count { it.method.name == "save" }

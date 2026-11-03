@@ -1,5 +1,6 @@
 package com.alkkuni.batch.product
 
+import com.alkkuni.batch.JobLock
 import com.alkkuni.batch.foodsafety.FoodSafetyClient
 import com.alkkuni.batch.raw.RawStore
 import com.alkkuni.core.ingestion.entity.IngestionCursor
@@ -10,6 +11,7 @@ import org.springframework.boot.ApplicationRunner
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.stereotype.Component
+import java.time.Clock
 import java.time.LocalDateTime
 
 /**
@@ -20,6 +22,7 @@ import java.time.LocalDateTime
  * - 페이지마다 total_count가 첫 페이지와 같은지. 받은 범위에서 하나 삭제되고 개수가 함께 줄면 끝의 비교만으로는 못 잡는다.
  * - 끝에 받은 신고번호 수가 total_count와 같은지.
  * upsert가 멱등이라 다시 돌리면 된다(47회 호출, 시간당 한도 100회 안).
+ * 증분 수집과 같은 잠금 키를 써서 둘이 겹쳐 돌지 않는다.
  */
 @Component
 @ConditionalOnProperty(name = ["alkkuni.job"], havingValue = "initial-load")
@@ -28,10 +31,14 @@ class InitialLoadJob(
     private val rawStore: RawStore,
     private val upserter: ProductUpserter,
     private val cursorRepository: IngestionCursorRepository,
+    private val jobLock: JobLock,
+    private val clock: Clock,
 ) : ApplicationRunner {
 
-    override fun run(args: ApplicationArguments) {
-        val collectedAt = LocalDateTime.now()
+    override fun run(args: ApplicationArguments) = jobLock.withLock(SERVICE) { load() }
+
+    private fun load() {
+        val collectedAt = LocalDateTime.now(clock)
         val seen = HashSet<String>()
         var totalCount: Int? = null
         var pageNo = 0
@@ -55,7 +62,7 @@ class InitialLoadJob(
             "$SERVICE 받은 신고번호 ${seen.size}건이 total_count ${totalCount}건과 다르다. 도중에 데이터가 바뀌었을 수 있으니 다시 실행한다."
         }
         // 증분 수집이 이어 받을 기준. 시작 시각 기준이라 적재 도중 바뀐 건도 다음 증분(커서 - 1일)이 다시 받는다.
-        val now = LocalDateTime.now()
+        val now = LocalDateTime.now(clock)
         val cursor = cursorRepository.findByIdOrNull(SERVICE)?.apply { advance(collectedAt.toLocalDate(), now) }
             ?: IngestionCursor(SERVICE, collectedAt.toLocalDate(), now)
         cursorRepository.save(cursor)
