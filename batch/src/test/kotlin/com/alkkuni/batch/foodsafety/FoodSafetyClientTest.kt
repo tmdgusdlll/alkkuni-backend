@@ -65,7 +65,7 @@ class FoodSafetyClientTest {
             .andRespond(json("""{"RESULT":{"MSG":"1시간당 100회까지만 호출할 수 있습니다.","CODE":"INFO-320"}}"""))
 
         assertFailsWith<FoodSafetyRateLimitException> {
-            client.forEachPage("I0030") { }
+            client.forEachPage("I0030") { _, _ -> }
         }
         server.verify()
     }
@@ -85,7 +85,7 @@ class FoodSafetyClientTest {
         server.expect(requestTo("$BASE/$KEY/I0030/json/1001/2000")).andRespond(json(ok(totalCount = 1500)))
 
         var pages = 0
-        client.forEachPage("I0030") { pages++ }
+        client.forEachPage("I0030") { _, _ -> pages++ }
 
         assertEquals(2, pages)
         server.verify()

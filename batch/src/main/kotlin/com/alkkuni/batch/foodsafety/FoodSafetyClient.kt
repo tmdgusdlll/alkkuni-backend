@@ -66,18 +66,31 @@ class FoodSafetyClient(
     }
 
     /**
-     * 처음부터 끝까지 [PAGE_SIZE]씩 받아 페이지마다 [action]을 부른다.
+     * 처음부터 끝까지 [PAGE_SIZE]씩 받아 페이지마다 [action]을 부르고(페이지 번호는 1부터), 첫 페이지의 `total_count`를 돌려준다.
      * 위치(start/end)로 나눠 받으므로 도중에 행이 추가·삭제되면 경계의 행이 빠지거나 겹칠 수 있다.
-     * 겹친 행은 upsert가 흡수한다. 빠진 행은 초기 적재와 증분 모두 받은 신고번호 수를 `total_count`와 비교해 잡고
-     * 실패로 끝낸다. "목록에 없으면 삭제"로 판단하는 전체 대사에는 쓰지 않는다(파일 방식).
+     * 그래서 페이지마다 `total_count`가 첫 페이지와 같은지 확인하고, 다르면 예외로 멈춘다.
+     * 같아도 수정으로 행 순서가 밀리면 빠질 수 있으므로, 호출한 쪽이 받은 키 수를 돌려받은 `total_count`와 비교한다.
+     * 겹친 행은 upsert가 흡수한다. "목록에 없으면 삭제"로 판단하는 I0030 전체 대사에는 쓰지 않는다(파일 방식).
      */
-    fun forEachPage(service: String, changedSince: LocalDate? = null, action: (FoodSafetyPage) -> Unit) {
+    fun forEachPage(
+        service: String,
+        changedSince: LocalDate? = null,
+        action: (pageNo: Int, page: FoodSafetyPage) -> Unit,
+    ): Int {
         var start = 1
+        var pageNo = 0
+        var totalCount: Int? = null
         do {
             val page = fetchPage(service, start, start + PAGE_SIZE - 1, changedSince)
-            action(page)
+            pageNo++
+            val expected = totalCount ?: page.totalCount.also { totalCount = it }
+            check(page.totalCount == expected) {
+                "$service ${pageNo}페이지 total_count가 ${expected}건에서 ${page.totalCount}건으로 바뀌었다. 도중에 데이터가 바뀌어 행이 빠졌을 수 있으니 다시 실행한다."
+            }
+            action(pageNo, page)
             start += PAGE_SIZE
-        } while (start <= page.totalCount)
+        } while (start <= expected)
+        return totalCount!!
     }
 
     private fun request(service: String, start: Int, end: Int, changedSince: LocalDate?): String {

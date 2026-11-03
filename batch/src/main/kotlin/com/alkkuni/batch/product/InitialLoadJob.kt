@@ -40,22 +40,15 @@ class InitialLoadJob(
     private fun load() {
         val collectedAt = LocalDateTime.now(clock)
         val seen = HashSet<String>()
-        var totalCount: Int? = null
-        var pageNo = 0
         var changed = 0
 
-        client.forEachPage(SERVICE) { page ->
-            pageNo++
-            val expected = totalCount ?: page.totalCount.also { totalCount = it }
-            check(page.totalCount == expected) {
-                "$SERVICE ${pageNo}페이지 total_count가 ${expected}건에서 ${page.totalCount}건으로 바뀌었다. 도중에 데이터가 바뀌어 행이 빠졌을 수 있으니 다시 실행한다."
-            }
+        val totalCount = client.forEachPage(SERVICE) { pageNo, page ->
             // 가공 전에 원본부터 남긴다. 파싱·저장이 실패해도 원본으로 다시 돌릴 수 있다.
             rawStore.save(SERVICE, collectedAt, "page_%03d.json".format(pageNo), page.rawBody)
             val rows = page.rows.map(I0030Row::from)
             changed += upserter.upsert(rows)
             rows.mapTo(seen) { it.reportNo }
-            log.info("{} {}페이지: 누적 {}/{}건", SERVICE, pageNo, seen.size, expected)
+            log.info("{} {}페이지: 누적 {}/{}건", SERVICE, pageNo, seen.size, page.totalCount)
         }
 
         check(seen.size == totalCount) {
