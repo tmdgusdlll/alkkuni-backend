@@ -20,20 +20,19 @@
 - [x] V2 마이그레이션: `Product`, `Ingredient`, `ProductIngredient`, `IngestionCursor` (PR #10)
 - [x] 식약처 API 클라이언트 (`RESULT.CODE` 해석, `INFO-320`이면 재시도 없이 중단) (PR #11)
 - [x] 초기 적재: 페이징 → 원본 저장 → 파싱 → 멱등 upsert, 건수 확인 (PR #12)
-- [ ] `CHNG_DT` 증분 수집
+- [x] `CHNG_DT` 증분 수집: 한 번 실행 후 종료, 커서 하루 겹쳐 받기
 - [ ] 회수 수집 (I0490 스냅샷 비교, 빠진 건은 상태만 변경)
 - [ ] 배포 준비: 도메인 확보, SES 샌드박스 해제·소셜 로그인 검수 기간 확인
 
 ## 다음 할 일
 
-1. 수집 배치(증분 → 회수)
+1. 수집 배치(회수)
    - `ProductIngredient.ingredientId`는 지금 `protected set`. 정규화 단계에서 `linkIngredient(id)` 같은 메서드로 연다
-   - Spring Batch는 쓰지 않고 `@Scheduled` + PostgreSQL advisory lock으로 시작. 재시작·청크가 필요해지면 도입. 초기 적재는 수동 1회라 `alkkuni.job=initial-load` 프로퍼티로 켜는 `ApplicationRunner`로 뒀다
-   - 증분도 `ProductUpserter`를 그대로 쓴다. 커서(`ingestion_cursor`) 저장은 증분 PR에서
+   - Spring Batch는 쓰지 않는다. 배치 작업은 `alkkuni.job=...`으로 켜는 `ApplicationRunner`(한 번 실행 후 종료)로 만들고, 매일 실행은 EC2 cron이 맡는다. 재시작·청크가 필요해지면 Spring Batch 도입
+   - 실행 잠금(advisory lock)은 아직 없다. 지금은 cron 하나만 실행해서 겹칠 일이 없다. 관리자 수동 실행(`collect_request`)을 만들 때 함께 넣는다
    - 운영 원본 저장은 S3. 지금 `RawStore`는 로컬 파일 시스템만(3주차 배포 때)
    - 판정 규칙을 바꾸면 `IngredientAmountParser.VERSION`을 올리고 초기 적재를 다시 돌린다. upsert는 원본 해시와 `product.parser_version`이 모두 같을 때만 건너뛰므로 다시 적재가 곧 재판정이다(`REVIEWED`는 `applyParse`가 지킨다). 운영 첫 적재 전까지는 버전을 올리지 않아도 된다
    - 파서: 최종제품 표기 변형 때문에 성분명이 `제품성`, `… (최종 제품)`으로 들어간 행이 있다. `finalProduct` 표시 제거가 `최종제품`만 지운다
-   - 증분: 오늘 날짜 `CHNG_DT`는 19시 전에 부르면 `INFO-700`(지금은 `FoodSafetyApiException`). 수집일이 오늘이 되지 않게 하거나 `INFO-700`을 따로 처리한다
    - 회수: I0490 `total_count`가 391인데 행은 390개(1~1000 한 번 호출, `RTRVLDSUSE_SEQ` 중복 없음). 스냅샷 비교 때 "빠진 건"으로 오판하지 않는지 확인한다
    - 네트워크 오류 재시도는 넣지 않았다. 매일 스케줄이 다음 날 다시 받는다. 초기 적재처럼 길게 도는 작업에서 문제가 되면 추가
 2. 1일 기준 환산: 분모(기준 중량)와 섭취방법(`NTK_MTHD`) 연결, 1일 함량 = 함량 × (1일 섭취 중량 ÷ 분모)
@@ -57,6 +56,7 @@
 
 ## 완료
 
+- [x] I0030 `CHNG_DT` 증분 수집(`IncrementalCollectJob`, 초기 적재 끝에 커서 저장), 로컬에서 실제 API로 실행 확인 (2026-11-03)
 - [x] I0030 초기 적재(`InitialLoadJob`, `ProductUpserter`, 로컬 `RawStore`), 로컬 DB에 46,154건 적재 확인 (PR #12, 2026-11-02)
 - [x] 식약처 API 클라이언트(batch `FoodSafetyClient`, `RestClient`), 실제 API 확인 (PR #11, 2026-11-02)
 - [x] V2 마이그레이션(`product`, `ingredient`, `product_ingredient`, `ingestion_cursor`)과 core 엔티티 4개·enum 3개, api·batch `ddl-auto: validate` (PR #10, 2026-11-02)
@@ -88,6 +88,16 @@
 - [ ] 상표(KIPRIS)와 도메인 확보
 
 ## 작업 로그
+
+### 2026-11-03
+- `CHNG_DT` 증분 수집 (`feat/incremental-collect`).
+  - 조회 기준일은 `커서 - 1일`이고 어제를 넘지 않는다. 하루를 겹쳐 받아 지난 실행이 페이징 경계에서 놓친 행과 수집 도중 바뀐 행을 다시 받는다. 겹친 행은 upsert가 해시·판정 버전으로 건너뛴다. 오늘 날짜는 19시 전 `INFO-700`이라 조회하지 않는다.
+  - 초기 적재와 달리 `total_count` 일관성 검사는 하지 않는다. 놓친 행은 다음 실행이 받는다. 커서는 끝까지 성공했을 때만 옮긴다.
+  - 실행 방식: 처음 구현은 `@Scheduled`(앱 상주)였는데 ADR-009("필요할 때만 뜨는 컨테이너")와 `PLANNING.md`의 "스케줄·수동 실행 모두 지원"에 어긋나서 `ApplicationRunner`로 바꿨다. 상주하면 메모리 200~300MB(2GB 중)를 늘 쓰고, 수동 실행 경로가 따로 필요하다. 커서가 없으면 예외로 끝내 종료 코드로 cron이 실패를 알게 했다. `matchIfMissing`은 빼서 옵션 없이 띄운 앱에서 수집이 돌지 않는다.
+  - 관리자 버튼 수집은 사용자 제안. API가 batch를 직접 띄우려면 Docker 소켓이나 AWS 권한이 필요해서, DB 요청 테이블에 쓰고 1분 cron이 실행하는 방식으로 정했다(`PLANNING.md` "관리자 운영 도구"). 구현은 5~6주차.
+  - 실제 실행: 로컬 DB 커서가 없어(초기 적재가 커서 저장 커밋 전에 돌았음) `I0030`, `2026-11-02`로 SQL로 넣고 실행. `CHNG_DT=2026-11-01`, 155건 받음, 새로 쓰거나 바뀐 제품 88건(제품 46,154 → 46,178), 커서 11-03으로 이동, 원본 `changed_001.json` 저장. 바로 다시 실행하니 155건 받고 0건 변경(멱등).
+  - 테스트: `IncrementalCollectJobTest` 5개(조회 기준일 2, 커서 역행 금지, 커서 없음 예외, CHNG_DT 조회·upsert·커서 이동).
+- 계획 추가: 관리자 운영 도구(파싱·회수 검수, 수집 현황·수동 실행, `ADMIN` 권한, 감사 로그)와 보안 운영(CloudFront 뒤 실제 IP 복원, 보안 그룹으로 직접 접속 차단, 호출 제한 등)을 `PLANNING.md`에 넣고 5~6주차로 잡았다. 검수 대기 데이터(`NEEDS_REVIEW` 300, `NO_AMOUNT` 1,062)가 실제로 쌓여 DB 직접 수정 대신 화면과 이력으로 처리하려는 것.
 
 ### 2026-11-02
 - 초기 적재 (`feat/initial-load`, PR #12).

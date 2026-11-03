@@ -9,6 +9,7 @@ import com.alkkuni.core.product.repository.ProductIngredientRepository
 import com.alkkuni.core.product.repository.ProductRepository
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.`when`
+import org.springframework.boot.DefaultApplicationArguments
 import org.springframework.http.MediaType
 import org.springframework.test.web.client.MockRestServiceServer
 import org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo
@@ -45,6 +46,21 @@ class IncrementalCollectJobTest {
     }
 
     @Test
+    fun `커서가 없으면 예외로 끝난다`() {
+        // 조용히 끝나면 cron이 성공으로 본다. 0이 아닌 종료 코드로 실패를 알려야 한다.
+        val cursorRepository = mock(IngestionCursorRepository::class.java)
+        `when`(cursorRepository.findById("I0030")).thenReturn(Optional.empty())
+        val job = IncrementalCollectJob(
+            mock(FoodSafetyClient::class.java),
+            RawStore(Files.createTempDirectory("raw")),
+            mock(ProductUpserter::class.java),
+            cursorRepository,
+        )
+
+        assertFailsWith<IllegalStateException> { job.run(DefaultApplicationArguments()) }
+    }
+
+    @Test
     fun `CHNG_DT로 받아 upsert하고 커서를 오늘로 옮긴다`() {
         val builder = RestClient.builder()
         val server = MockRestServiceServer.bindTo(builder).build()
@@ -68,7 +84,7 @@ class IncrementalCollectJobTest {
         )
         val client = FoodSafetyClient(builder, JsonMapper.builder().build(), "k")
 
-        IncrementalCollectJob(client, RawStore(Files.createTempDirectory("raw")), upserter, cursorRepository).run()
+        IncrementalCollectJob(client, RawStore(Files.createTempDirectory("raw")), upserter, cursorRepository).run(DefaultApplicationArguments())
 
         server.verify()
         assertEquals(listOf("P1"), received)
