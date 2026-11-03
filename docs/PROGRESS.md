@@ -20,20 +20,21 @@
 - [x] V2 마이그레이션: `Product`, `Ingredient`, `ProductIngredient`, `IngestionCursor` (PR #10)
 - [x] 식약처 API 클라이언트 (`RESULT.CODE` 해석, `INFO-320`이면 재시도 없이 중단) (PR #11)
 - [x] 초기 적재: 페이징 → 원본 저장 → 파싱 → 멱등 upsert, 건수 확인 (PR #12)
-- [ ] `CHNG_DT` 증분 수집
+- [x] `CHNG_DT` 증분 수집: 한 번 실행 후 종료, 건수 확인, 실행 잠금 (PR #13)
 - [ ] 회수 수집 (I0490 스냅샷 비교, 빠진 건은 상태만 변경)
 - [ ] 배포 준비: 도메인 확보, SES 샌드박스 해제·소셜 로그인 검수 기간 확인
 
 ## 다음 할 일
 
-1. 수집 배치(증분 → 회수)
+1. 수집 배치(회수)
    - `ProductIngredient.ingredientId`는 지금 `protected set`. 정규화 단계에서 `linkIngredient(id)` 같은 메서드로 연다
-   - Spring Batch는 쓰지 않고 `@Scheduled` + PostgreSQL advisory lock으로 시작. 재시작·청크가 필요해지면 도입. 초기 적재는 수동 1회라 `alkkuni.job=initial-load` 프로퍼티로 켜는 `ApplicationRunner`로 뒀다
-   - 증분도 `ProductUpserter`를 그대로 쓴다. 커서(`ingestion_cursor`) 저장은 증분 PR에서
+   - Spring Batch는 쓰지 않는다. 배치 작업은 `alkkuni.job=...`으로 켜는 `ApplicationRunner`(한 번 실행 후 종료)로 만들고, 매일 실행은 EC2 cron이 맡는다. 재시작·청크가 필요해지면 Spring Batch 도입
+   - 실행 잠금은 `JobLock`(advisory lock, 출처별 키). 새 배치 작업도 `jobLock.withLock(출처)`로 감싼다
+   - 날짜는 주입한 `Clock`(Asia/Seoul)으로 계산한다. `LocalDate.now()`를 직접 쓰지 않는다
+   - (배포 때) `alkkuni.job` 값에 오타가 있으면 아무 작업도 안 하고 정상 종료한다. cron 명령을 만들 때 "성공 로그가 없으면 알람"으로 잡는다
    - 운영 원본 저장은 S3. 지금 `RawStore`는 로컬 파일 시스템만(3주차 배포 때)
    - 판정 규칙을 바꾸면 `IngredientAmountParser.VERSION`을 올리고 초기 적재를 다시 돌린다. upsert는 원본 해시와 `product.parser_version`이 모두 같을 때만 건너뛰므로 다시 적재가 곧 재판정이다(`REVIEWED`는 `applyParse`가 지킨다). 운영 첫 적재 전까지는 버전을 올리지 않아도 된다
    - 파서: 최종제품 표기 변형 때문에 성분명이 `제품성`, `… (최종 제품)`으로 들어간 행이 있다. `finalProduct` 표시 제거가 `최종제품`만 지운다
-   - 증분: 오늘 날짜 `CHNG_DT`는 19시 전에 부르면 `INFO-700`(지금은 `FoodSafetyApiException`). 수집일이 오늘이 되지 않게 하거나 `INFO-700`을 따로 처리한다
    - 회수: I0490 `total_count`가 391인데 행은 390개(1~1000 한 번 호출, `RTRVLDSUSE_SEQ` 중복 없음). 스냅샷 비교 때 "빠진 건"으로 오판하지 않는지 확인한다
    - 네트워크 오류 재시도는 넣지 않았다. 매일 스케줄이 다음 날 다시 받는다. 초기 적재처럼 길게 도는 작업에서 문제가 되면 추가
 2. 1일 기준 환산: 분모(기준 중량)와 섭취방법(`NTK_MTHD`) 연결, 1일 함량 = 함량 × (1일 섭취 중량 ÷ 분모)
@@ -57,6 +58,7 @@
 
 ## 완료
 
+- [x] I0030 `CHNG_DT` 증분 수집(`IncrementalCollectJob`, 초기 적재 끝에 커서 저장, `JobLock`), 로컬에서 실제 API로 실행 확인 (PR #13, 2026-11-03)
 - [x] I0030 초기 적재(`InitialLoadJob`, `ProductUpserter`, 로컬 `RawStore`), 로컬 DB에 46,154건 적재 확인 (PR #12, 2026-11-02)
 - [x] 식약처 API 클라이언트(batch `FoodSafetyClient`, `RestClient`), 실제 API 확인 (PR #11, 2026-11-02)
 - [x] V2 마이그레이션(`product`, `ingredient`, `product_ingredient`, `ingestion_cursor`)과 core 엔티티 4개·enum 3개, api·batch `ddl-auto: validate` (PR #10, 2026-11-02)
@@ -88,6 +90,23 @@
 - [ ] 상표(KIPRIS)와 도메인 확보
 
 ## 작업 로그
+
+### 2026-11-03
+- `CHNG_DT` 증분 수집 (`feat/incremental-collect`, PR #13).
+  - 조회 기준일은 `커서 - 1일`. 커서가 오늘보다 뒤면 API를 부르기 전에 실패하므로 조회일은 항상 어제 이전이다(오늘 날짜는 19시 전 `INFO-700`). 겹친 하루는 수집 도중·직후에 바뀐 행을 다시 받고, 겹친 행은 upsert가 해시·판정 버전으로 건너뛴다.
+  - 초기 적재와 같은 `total_count` 검사(페이지마다 같은지, 받은 신고번호 수와 같은지)를 한다. 다르면 커서를 옮기지 않고 실패로 끝내 다음 실행이 같은 구간부터 다시 받는다. 처음엔 "하루 겹침이 놓친 행을 다시 받는다"며 검사를 뺐는데, `/code-review`에서 틀렸다고 지적받음(아래).
+  - 실행 방식: 처음 구현은 `@Scheduled`(앱 상주)였는데 ADR-009("필요할 때만 뜨는 컨테이너")와 `PLANNING.md`의 "스케줄·수동 실행 모두 지원"에 어긋나서 `ApplicationRunner`로 바꿨다. 상주하면 메모리 200~300MB(2GB 중)를 늘 쓰고, 수동 실행 경로가 따로 필요하다. 커서가 없으면 예외로 끝내 종료 코드로 cron이 실패를 알게 했다. `matchIfMissing`은 빼서 옵션 없이 띄운 앱에서 수집이 돌지 않는다.
+  - 관리자 버튼 수집은 사용자 제안. API가 batch를 직접 띄우려면 Docker 소켓이나 AWS 권한이 필요해서, DB 요청 테이블에 쓰고 1분 cron이 실행하는 방식으로 정했다(`PLANNING.md` "관리자 운영 도구"). 구현은 5~6주차.
+  - 실제 실행: 로컬 DB 커서가 없어(초기 적재가 커서 저장 커밋 전에 돌았음) `I0030`, `2026-11-02`로 SQL로 넣고 실행. `CHNG_DT=2026-11-01`, 155건 받음, 새로 쓰거나 바뀐 제품 88건(제품 46,154 → 46,178), 커서 11-03으로 이동, 원본 `changed_001.json` 저장. 바로 다시 실행하니 155건 받고 0건 변경(멱등).
+  - 테스트: `IncrementalCollectJobTest` 6개(한국 날짜 기준 조회·커서 이동, 건수 불일치, total_count 변경, 미래 커서, 커서 없음, 커서 역행 금지), `JobLockTest` 2개(Testcontainers: 같은 키 거부·다른 키 허용, 실패해도 잠금 해제).
+  - `/code-review`(high) 반영:
+    - 하루 겹침으로는 경계에서 빠진 행이 다 돌아오지 않는다. 조회 시작일(D-2) 날짜의 행을 놓치면 다음 실행(D-1부터)이 받지 않는다. → 건수 검사 추가, 주석·`FoodSafetyClient` 설명 정정.
+    - 실행 잠금 없음(`REVIEW.md` Important). 초기 적재와 증분이 겹치면 같은 신고번호 INSERT로 UNIQUE 위반, 초기 적재 끝의 커서 역행 예외. → `JobLock`(`pg_try_advisory_lock`, 세션 잠금, 연결 하나를 작업 끝까지 붙잡음)을 두 작업에 같은 키 `I0030`으로. 처음엔 관리자 수동 실행 때 넣으려 했으나 지금도 두 작업을 동시에 띄울 수 있다.
+    - 시간대: `@Scheduled`를 지우면서 `zone = "Asia/Seoul"`도 사라져 JVM 기본(컨테이너는 UTC)을 썼다. 한국 00~09시 실행이면 오늘이 하루 전으로 잡혀 커서 역행 예외. → `Clock`(Asia/Seoul) 빈 주입. 테스트 자정 걸침 문제도 고정 시계로 해결.
+    - `changedSince`의 `min(…, 어제)`는 정상 상태에서 쓰이지 않는 분기라 지우고, 미래 커서를 시작 시 거르게 바꿈. `ProductUpserterTest` TRUNCATE에 `ingestion_cursor` 추가.
+    - 넘김: `alkkuni.job` 오타 시 정상 종료(기동 검사를 넣으면 `alkkuni.job` 없이 뜨는 `@SpringBootTest`가 깨짐, 배포 때 알람으로), 두 잡의 페이지 루프 중복(4줄, 세 번째 수집 작업 때 다시 봄).
+  - 반영 후 실제 실행: `TZ=UTC`로 띄워도 커서 날짜가 한국 기준(11-03)으로 저장됨. psql 세션이 `I0030` 잠금을 잡은 동안 실행하면 "이미 실행 중"으로 실패함.
+- 계획 추가: 관리자 운영 도구(파싱·회수 검수, 수집 현황·수동 실행, `ADMIN` 권한, 감사 로그)와 보안 운영(CloudFront 뒤 실제 IP 복원, 보안 그룹으로 직접 접속 차단, 호출 제한 등)을 `PLANNING.md`에 넣고 5~6주차로 잡았다. 검수 대기 데이터(`NEEDS_REVIEW` 300, `NO_AMOUNT` 1,062)가 실제로 쌓여 DB 직접 수정 대신 화면과 이력으로 처리하려는 것.
 
 ### 2026-11-02
 - 초기 적재 (`feat/initial-load`, PR #12).

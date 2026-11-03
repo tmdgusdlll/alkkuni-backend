@@ -1,5 +1,7 @@
 package com.alkkuni.batch.product
 
+import com.alkkuni.core.ingestion.entity.IngestionCursor
+import com.alkkuni.core.ingestion.repository.IngestionCursorRepository
 import com.alkkuni.core.parser.IngredientAmountParser
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -11,6 +13,7 @@ import org.springframework.test.context.ActiveProfiles
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import org.testcontainers.postgresql.PostgreSQLContainer
+import java.time.LocalDate
 import java.time.LocalDateTime
 import kotlin.test.assertEquals
 
@@ -26,6 +29,7 @@ import kotlin.test.assertEquals
 class ProductUpserterTest(
     @Autowired private val upserter: ProductUpserter,
     @Autowired private val jdbc: JdbcTemplate,
+    @Autowired private val cursorRepository: IngestionCursorRepository,
 ) {
     companion object {
         @Container
@@ -35,7 +39,20 @@ class ProductUpserterTest(
 
     @BeforeEach
     fun clean() {
-        jdbc.execute("TRUNCATE product, product_ingredient")
+        jdbc.execute("TRUNCATE product, product_ingredient, ingestion_cursor")
+    }
+
+    // 잡은 트랜잭션 밖에서 커서를 읽고(advance) save한다. 분리된 객체의 변경이 DB에 반영되는지 확인한다.
+    @Test
+    fun `읽은 커서를 advance 후 저장하면 날짜가 바뀐다`() {
+        cursorRepository.save(IngestionCursor("I0030", LocalDate.of(2026, 11, 1), LocalDateTime.now()))
+        val cursor = cursorRepository.findById("I0030").get()
+
+        cursor.advance(LocalDate.of(2026, 11, 2), LocalDateTime.now())
+        cursorRepository.save(cursor)
+
+        assertEquals(1, cursorRepository.count())
+        assertEquals(LocalDate.of(2026, 11, 2), cursorRepository.findById("I0030").get().lastCollectedDate)
     }
 
     @Test
