@@ -1,6 +1,7 @@
 package com.alkkuni.core.product.entity
 
 import com.alkkuni.core.parser.AmountSanityCheck
+import com.alkkuni.core.parser.AmountUnit
 import com.alkkuni.core.parser.IngredientAmountParser
 import com.alkkuni.core.parser.IntakeMethod
 import com.alkkuni.core.parser.IntakeMethodParser
@@ -18,6 +19,7 @@ import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
 import jakarta.persistence.Table
 import java.math.BigDecimal
+import java.math.MathContext
 import java.time.LocalDateTime
 
 @Entity
@@ -135,7 +137,8 @@ class Product(
         }
         val issues = result.unreadLines.map { "못 읽은 줄: $it" } + AmountSanityCheck.issues(result.amounts)
         this.standardText = standardText
-        rawMaterial = standardText?.let(IngredientAmountParser::isRawMaterialOnly) ?: false
+        rawMaterial = standardText?.let(IngredientAmountParser::isRawMaterialOnly) == true ||
+            IntakeMethodParser.isRawMaterialUse(intakeMethod)
         parseStatus = when {
             issues.isNotEmpty() -> ParseStatus.NEEDS_REVIEW
             result.amounts.isEmpty() -> ParseStatus.NO_AMOUNT
@@ -166,19 +169,59 @@ class Product(
             .singleOrNull()
         val perTime = intake.amountPerTime
         if (basis == null || perTime == null || basis.second != intake.amountUnit) return BasisCheck.UNVERIFIED
-        val (basisAmount, _) = basis
-        val perDay = perTime.multiply(intake.timesPerDay.toBigDecimal())
-        return when {
-            near(perDay, basisAmount) -> BasisCheck.DAILY
-            intake.timesPerDay > 1 && near(perTime, basisAmount) -> BasisCheck.PER_SERVING
-            else -> BasisCheck.MISMATCH
+        return when (servingRatio(basis.first, perTime, intake.timesPerDay)) {
+            null -> BasisCheck.MISMATCH
+            BigDecimal.ONE -> BasisCheck.DAILY
+            else -> BasisCheck.PER_SERVING
         }
     }
+
+    // 분모 → 1일 섭취량 배율. 분모가 하루치면 1, 1회분이면 1일 횟수, 둘 다 아니면 null.
+    // 분모 확인(checkBasis)과 1일 함량(dailyAmount)이 같은 판단을 쓰게 한 곳에 둔다.
+    private fun servingRatio(basis: BigDecimal, perTime: BigDecimal, times: Int): BigDecimal? = when {
+        near(perTime.multiply(times.toBigDecimal()), basis) -> BigDecimal.ONE
+        times > 1 && near(perTime, basis) -> times.toBigDecimal()
+        else -> null
+    }
+
+    /**
+     * 성분 함량 한 줄의 1일 함량을 통일한 단위(AmountUnit)로 계산한다. 계산할 수 없으면 null.
+     * 1일 함량 = 함량 × (1일 섭취 중량 ÷ 분모). 1일 섭취 중량 = 1회 중량 × 1일 횟수. applyParse 뒤에 부른다.
+     * - 비교할 수 있으면: 분모가 하루치면 그대로, 1회분이면 × 1일 횟수, "/g" 같은 단위당 농도면 × 하루 섭취 중량. 어느 것도 아니면 원문 오류일 수 있어 null.
+     * - 비교할 수 없으면(1회 중량 없음, 무게·부피 섞임, 섭취방법 못 읽음): 전체 중량 분모는 하루치로 가정한다
+     *   (확인된 제품의 94%가 하루치, 추정 여부는 basisCheck로 구분). 단위당 분모는 하루에 몇 g 먹는지 몰라 null.
+     */
+    fun dailyAmount(parsed: ParsedAmount): Pair<BigDecimal, String>? {
+        // 원료는 하루 섭취량이 없다. 비교 대상도 아니다.
+        if (rawMaterial) return null
+        val (amount, unit) = AmountUnit.normalize(parsed.amount, parsed.unit) ?: return null
+        // "4mg/g"처럼 분모에 숫자가 없으면 파서가 1을 넣는다. g·ml당 농도다.
+        // "/1.000mg"(1,000mg의 오기)이 1mg으로 읽혀 1mg당 농도로 보면 1000배가 되므로 mg 분모는 농도로 보지 않는다.
+        val perUnit = parsed.basisAmount.compareTo(BigDecimal.ONE) == 0 && parsed.basisUnit.lowercase() in PER_UNIT_BASIS
+        val basis = IntakeMethodParser.normalize(parsed.basisAmount, parsed.basisUnit)
+        val perTime = intakeAmountPerTime
+        val times = intakeTimesPerDay
+        // 분모 0은 원문 오기다. 하루치로 가정하지 않는다.
+        if (basis?.first?.signum() == 0) return null
+        if (basis == null || perTime == null || times == null || basis.second != intakeAmountUnit) {
+            return if (perUnit) null else amount.clean() to unit
+        }
+        val ratio = if (perUnit) {
+            perTime.multiply(times.toBigDecimal()).divide(basis.first, MathContext.DECIMAL64)
+        } else {
+            servingRatio(basis.first, perTime, times) ?: return null
+        }
+        return amount.multiply(ratio).clean() to unit
+    }
+
+    // 0.700 → 0.7. 1E+8처럼 지수 표기가 되지 않게 음수 scale은 0으로 둔다.
+    private fun BigDecimal.clean() = stripTrailingZeros().let { if (it.scale() < 0) it.setScale(0) else it }
 
     // 표기 반올림(0.45g × 2 = 900mg vs 분모 905mg)을 같다고 본다. 실제 데이터에서 2% 안에 93%가 맞았다.
     private fun near(a: BigDecimal, b: BigDecimal) = (a - b).abs() <= b.multiply(TOLERANCE)
 
     companion object {
         private val TOLERANCE = BigDecimal("0.02")
+        private val PER_UNIT_BASIS = setOf("g", "ml", "㎖")
     }
 }

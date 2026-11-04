@@ -41,6 +41,7 @@ object IntakeMethodParser {
     // "1일 1~2회", "1회 1-2정", "1일 1회 1포 또는 1일 2회 …"는 한 값으로 정할 수 없어 읽지 않는다.
     // "직접 또는 물과 함께"의 "또는"은 숫자가 뒤따르지 않아 걸리지 않는다.
     private val range = Regex("""(?U)\d\s*[~～\-－]\s*\d""")
+    private val ambiguousThousands = Regex("""\d{1,3}\.\d{3}""")
     private val alternative = Regex("""(?U)또는\s*(?:1\s*일|\d)""")
 
     fun parse(text: String?): IntakeMethod? {
@@ -51,7 +52,11 @@ object IntakeMethodParser {
         val count = m.groups["units"]!!.value.let { koreanNumbers[it]?.toBigDecimal() ?: number(it) }
         val countUnit = m.groups["unit"]!!.value
         val mult = m.groups["mult"]?.value?.toBigDecimal()
-        val (amount, amountUnit) = m.groups["amt"]?.let { normalize(number(it.value), m.groups["amtunit"]!!.value) }
+        // "1회 2정(2.000 mg)"은 2,000mg을 마침표로 적은 것으로 보이지만 2mg인지 알 수 없다. 추측하지 않고 1회 중량을 비운다.
+        // g·ml은 "1.500g"(1.5g)이 자연스러워 mg만 본다.
+        val (amount, amountUnit) = m.groups["amt"]
+            ?.takeUnless { ambiguousThousands.matches(it.value) && m.groups["amtunit"]!!.value in setOf("mg", "㎎") }
+            ?.let { normalize(number(it.value), m.groups["amtunit"]!!.value) }
             ?: normalize(count.multiply(mult ?: BigDecimal.ONE), countUnit)
             ?: (null to null)
         return IntakeMethod(
@@ -62,6 +67,15 @@ object IntakeMethodParser {
             amountUnit = amountUnit,
         )
     }
+
+    // "건강기능식품 원료로 사용", "건강기능식품 제조 시 일일 섭취량에 적합한 양을 사용"처럼 원료로 파는 품목의 섭취방법.
+    // "1일 3회", "1회 1g" 같은 소비자 섭취량이 함께 있으면 완제품으로도 팔리므로 원료로 보지 않는다.
+    // 기준규격에는 원료 표시가 없고 섭취방법에만 있는 제품이 약 2,500개다(I0030 2026-11-04).
+    private val rawMaterialUse = Regex("""원료|제조\s*시""")
+    private val consumerDose = Regex("""(?U)1\s*[일회][^가-힣]{0,3}\d""")
+
+    fun isRawMaterialUse(text: String?): Boolean =
+        text != null && rawMaterialUse.containsMatchIn(text) && !consumerDose.containsMatchIn(text)
 
     // 무게는 mg, 부피는 ml로 바꾼다. 개수 단위(정·포 등)나 모르는 단위면 null.
     fun normalize(value: BigDecimal, unit: String): Pair<BigDecimal, String>? = when (unit.lowercase()) {

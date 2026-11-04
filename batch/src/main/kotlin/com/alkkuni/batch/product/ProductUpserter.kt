@@ -56,6 +56,7 @@ class ProductUpserter(
                 if (found != null) productIngredientRepository.deleteAllByProductId(productId)
                 productIngredientRepository.saveAll(
                     result.amounts.map {
+                        val daily = product.dailyAmount(it)
                         ProductIngredient(
                             productId = productId,
                             rawName = it.rawName,
@@ -65,6 +66,8 @@ class ProductUpserter(
                             basisUnit = it.basisUnit,
                             extractionMethod = ExtractionMethod.RULE,
                             parserVersion = IngredientAmountParser.VERSION,
+                            dailyAmount = daily?.first,
+                            dailyUnit = daily?.second,
                         )
                     },
                 )
