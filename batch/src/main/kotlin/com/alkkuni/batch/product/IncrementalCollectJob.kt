@@ -20,7 +20,7 @@ import java.time.LocalDateTime
  *   (오늘 날짜 CHNG_DT는 19시 전에 INFO-700). 겹친 하루는 수집 도중이나 직후에 바뀐 행을 다시 받는다.
  *   겹친 행은 upsert가 해시·판정 버전으로 건너뛴다.
  * - 하루 겹침만으로는 페이징 경계에서 빠진 행이 다 돌아오지 않는다(조회 시작일 날짜의 행은 다음 실행 범위 밖).
- *   그래서 초기 적재와 같이 total_count가 페이지마다 같은지, 받은 신고번호 수가 total_count와 같은지 확인하고,
+ *   그래서 초기 적재와 같이 total_count가 페이지마다 같은지(forEachPage), 받은 신고번호 수가 total_count와 같은지 확인하고,
  *   다르면 커서를 옮기지 않고 실패로 끝낸다. 다음 실행이 같은 구간부터 다시 받는다.
  * - 삭제는 CHNG_DT로 잡지 못한다. 전체 대사(파일 방식)가 맡는다.
  *
@@ -54,16 +54,10 @@ class IncrementalCollectJob(
         }
         val since = cursor.lastCollectedDate.minusDays(1)
         val seen = HashSet<String>()
-        var totalCount: Int? = null
-        var pageNo = 0
         var changed = 0
 
-        client.forEachPage(SERVICE, since) { page ->
-            pageNo++
-            val expected = totalCount ?: page.totalCount.also { totalCount = it }
-            check(page.totalCount == expected) {
-                "$SERVICE CHNG_DT=$since ${pageNo}페이지 total_count가 ${expected}건에서 ${page.totalCount}건으로 바뀌었다. 커서를 옮기지 않고 다음 실행이 다시 받는다."
-            }
+        // 도중에 total_count가 바뀌면 forEachPage가 예외로 멈춘다. 커서는 옮기지 않으므로 다음 실행이 다시 받는다.
+        val totalCount = client.forEachPage(SERVICE, since) { pageNo, page ->
             // 가공 전에 원본부터 남긴다(초기 적재와 같은 이유).
             rawStore.save(SERVICE, collectedAt, "changed_%03d.json".format(pageNo), page.rawBody)
             val rows = page.rows.map(I0030Row::from)
@@ -71,7 +65,7 @@ class IncrementalCollectJob(
             rows.mapTo(seen) { it.reportNo }
         }
 
-        check(seen.size == (totalCount ?: 0)) {
+        check(seen.size == totalCount) {
             "$SERVICE CHNG_DT=$since 받은 신고번호 ${seen.size}건이 total_count ${totalCount}건과 다르다. 커서를 옮기지 않고 다음 실행이 다시 받는다."
         }
         // 끝까지 성공했을 때만 옮긴다. 도중에 실패하면 커서가 그대로라 다음 실행이 같은 구간부터 다시 받는다.
