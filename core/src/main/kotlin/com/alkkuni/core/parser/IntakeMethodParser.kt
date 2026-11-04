@@ -29,11 +29,12 @@ object IntakeMethodParser {
     private const val COUNT = """$NUMBER|[한두세네](?=\s?(?:$UNIT))"""
 
     // "1일 2회, 1회 2캡슐", "1일 1회 1캡슐", "1일 3회, 1회에 1포", "1일, 3회 1회시 1포", "1일 1회 / 1회 1포", "1일 2정"(횟수 없음 → 1회로 봄)
-    // 단위 뒤 괄호: "1Vial(병)(20mL)"처럼 단위 설명 괄호를 건너뛰고, "3g×2포(6g)"처럼 곱셈 표기를 건너뛴 뒤 중량 괄호를 읽는다.
+    // 단위 뒤 괄호: "1Vial(병)(20mL)"처럼 단위 설명 괄호를 건너뛴다.
+    // 곱셈 표기 "3g×2포(6g)"는 1회 2포로 읽고, 중량 괄호가 없으면 3g × 2 = 6g을 1회 중량으로 쓴다.
     private val pattern = Regex(
         """(?U)1\s*일$SEP(?:(?<times>\d+)\s*회$SEP(?:1\s*회\s*(?:에|당|분|시)?$SEP)?)?""" +
             """(?<units>$COUNT)\s*(?<unit>$UNIT)(?![A-Za-z])""" +
-            """(?:\s*\([가-힣]+\))?(?:\s*[×xX*]\s*\d+\s*(?:$UNIT))?""" +
+            """(?:\s*\([가-힣]+\))?(?:\s*[×xX*]\s*(?<mult>\d+)\s*(?<multunit>$UNIT))?""" +
             """(?:\s*\(\s*(?<amt>$NUMBER)\s*(?<amtunit>$AMOUNT_UNIT)\s*\))?""",
     )
 
@@ -47,15 +48,16 @@ object IntakeMethodParser {
         val m = pattern.find(text) ?: return null
         // 범위는 읽은 부분 안에서만 본다. 뒤쪽 "물 200~250ml에 타서"는 섭취량이 아니다.
         if (range.containsMatchIn(m.value) || alternative.containsMatchIn(text)) return null
-        val units = m.groups["units"]!!.value.let { koreanNumbers[it]?.toBigDecimal() ?: number(it) }
-        val unit = m.groups["unit"]!!.value
+        val count = m.groups["units"]!!.value.let { koreanNumbers[it]?.toBigDecimal() ?: number(it) }
+        val countUnit = m.groups["unit"]!!.value
+        val mult = m.groups["mult"]?.value?.toBigDecimal()
         val (amount, amountUnit) = m.groups["amt"]?.let { normalize(number(it.value), m.groups["amtunit"]!!.value) }
-            ?: normalize(units, unit)
+            ?: normalize(count.multiply(mult ?: BigDecimal.ONE), countUnit)
             ?: (null to null)
         return IntakeMethod(
             timesPerDay = m.groups["times"]?.value?.toInt() ?: 1,
-            unitsPerTime = units,
-            unit = unit,
+            unitsPerTime = mult ?: count,
+            unit = m.groups["multunit"]?.value ?: countUnit,
             amountPerTime = amount,
             amountUnit = amountUnit,
         )

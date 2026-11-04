@@ -92,6 +92,19 @@ class FoodSafetyClientTest {
     }
 
     @Test
+    fun `마지막 페이지가 꽉 차 있으면 total_count를 넘어서도 한 페이지 더 받는다`() {
+        // total_count는 1000인데 당일 신고 1건이 행에 먼저 나와 실제로는 1001건이다
+        server.expect(requestTo("$BASE/$KEY/I0030/json/1/1000")).andRespond(json(ok(totalCount = 1000, rows = 1000)))
+        server.expect(requestTo("$BASE/$KEY/I0030/json/1001/2000")).andRespond(json(ok(totalCount = 1000, rows = 1)))
+
+        var received = 0
+        client.forEachPage("I0030") { _, page -> received += page.rows.size }
+
+        assertEquals(1001, received)
+        server.verify()
+    }
+
+    @Test
     fun `네트워크 오류 메시지와 원인에 인증키가 남지 않는다`() {
         server.expect(requestTo("$BASE/$KEY/I0030/json/1/1000")).andRespond(withException(IOException("timeout")))
 
@@ -150,8 +163,10 @@ class FoodSafetyClientTest {
 
     private fun json(body: String) = withSuccess(body, MediaType.APPLICATION_JSON)
 
-    private fun ok(totalCount: Int) =
-        """{"I0030":{"total_count":"$totalCount","row":[],"RESULT":{"MSG":"정상처리되었습니다.","CODE":"INFO-000"}}}"""
+    private fun ok(totalCount: Int, rows: Int = 0): String {
+        val row = (1..rows).joinToString(",") { """{"PRDLST_REPORT_NO":"P$it"}""" }
+        return """{"I0030":{"total_count":"$totalCount","row":[$row],"RESULT":{"MSG":"정상처리되었습니다.","CODE":"INFO-000"}}}"""
+    }
 
     companion object {
         private const val KEY = "test-key-1234"

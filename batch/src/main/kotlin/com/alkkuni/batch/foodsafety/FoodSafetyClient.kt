@@ -70,6 +70,7 @@ class FoodSafetyClient(
      * 위치(start/end)로 나눠 받으므로 도중에 행이 추가·삭제되면 경계의 행이 빠지거나 겹칠 수 있다.
      * 그래서 페이지마다 `total_count`가 첫 페이지와 같은지 확인하고, 다르면 예외로 멈춘다.
      * 같아도 수정으로 행 순서가 밀리면 빠질 수 있으므로, 호출한 쪽이 받은 키 수를 돌려받은 `total_count`와 비교한다.
+     * `total_count`보다 행이 많이 오는 날이 있어(갱신 지연), 받은 페이지가 꽉 차 있으면 `total_count`를 넘어서도 계속 받는다.
      * 겹친 행은 upsert가 흡수한다. "목록에 없으면 삭제"로 판단하는 I0030 전체 대사에는 쓰지 않는다(파일 방식).
      */
     fun forEachPage(
@@ -89,7 +90,8 @@ class FoodSafetyClient(
             }
             action(pageNo, page)
             start += PAGE_SIZE
-        } while (start <= expected)
+            // total_count가 늦게 갱신돼 실제 행이 더 많을 수 있다(당일 신고 제품). 마지막 페이지가 꽉 찼으면 한 페이지 더 받는다.
+        } while (start <= expected || page.rows.size == PAGE_SIZE)
         return totalCount!!
     }
 

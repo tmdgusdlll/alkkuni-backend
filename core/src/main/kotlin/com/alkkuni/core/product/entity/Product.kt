@@ -121,13 +121,18 @@ class Product(
 
     /**
      * 파싱 결과로 판정을 정한다. 성분 행을 다시 써야 하면 true.
-     * 원문이 그대로인데 사람이 검수(REVIEWED)했으면 아무것도 바꾸지 않고 false다.
+     * 원문이 그대로인데 사람이 검수(REVIEWED)했으면 기준규격 판정은 바꾸지 않고 false다.
      * 원문이 바뀌었으면 검수 결과도 옛 원문 기준이라 다시 판정한다.
      * 섭취방법 파싱과 분모 확인은 검수 여부와 상관없이 매번 한다. 섭취방법만 바뀌어도 맞춰야 해서다.
      */
     fun applyParse(standardText: String?, result: ParseResult): Boolean {
         applyIntake(IntakeMethodParser.parse(intakeMethod), result.amounts)
-        if (parseStatus == ParseStatus.REVIEWED && standardText == this.standardText) return false
+        if (parseStatus == ParseStatus.REVIEWED && standardText == this.standardText) {
+            // 기준규격 판정은 사람 것을 지키지만 섭취방법은 이 버전 규칙으로 다시 판정했다.
+            // 버전을 그대로 두면 upsert의 건너뛰기 조건(해시·버전 같음)을 영영 못 맞춰 적재 때마다 다시 처리된다.
+            parserVersion = IngredientAmountParser.VERSION
+            return false
+        }
         val issues = result.unreadLines.map { "못 읽은 줄: $it" } + AmountSanityCheck.issues(result.amounts)
         this.standardText = standardText
         rawMaterial = standardText?.let(IngredientAmountParser::isRawMaterialOnly) ?: false
@@ -154,7 +159,11 @@ class Product(
         if (amounts.isEmpty()) return null
         if (intake == null) return BasisCheck.UNREADABLE
         // ponytail: 분모가 여러 개인 제품(약 150건)은 확인하지 않는다. 성분별로 확인하려면 product_ingredient에 둔다.
-        val basis = amounts.map { IntakeMethodParser.normalize(it.basisAmount, it.basisUnit) }.distinct().singleOrNull()
+        // "/2,400mg"(2400)과 "/2.4g"(2400.0)이 같은 분모로 모이게 scale을 지운다. BigDecimal.equals는 scale까지 본다.
+        val basis = amounts
+            .map { IntakeMethodParser.normalize(it.basisAmount, it.basisUnit)?.let { (v, u) -> v.stripTrailingZeros() to u } }
+            .distinct()
+            .singleOrNull()
         val perTime = intake.amountPerTime
         if (basis == null || perTime == null || basis.second != intake.amountUnit) return BasisCheck.UNVERIFIED
         val (basisAmount, _) = basis

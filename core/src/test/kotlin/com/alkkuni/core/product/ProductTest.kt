@@ -47,8 +47,8 @@ class ProductTest {
 
         assertFalse(product.applyParse(text, IngredientAmountParser.parse(text)))
         assertEquals(ParseStatus.REVIEWED, product.parseStatus)
-        // 다시 판정하지 않았으니 버전도 그대로다
-        assertEquals("0", product.parserVersion)
+        // 섭취방법은 새 규칙으로 판정했으니 버전은 올린다. 그대로면 적재 때마다 다시 처리된다.
+        assertEquals(IngredientAmountParser.VERSION, product.parserVersion)
     }
 
     @Test
@@ -81,6 +81,12 @@ class ProductTest {
     fun `분모와 1회 중량의 단위가 달라도 같은 종류면 비교한다`() {
         // 2.4g = 2회 × 1,200mg, 반올림 2% 이내(1,190mg)도 같다고 본다
         assertEquals(BasisCheck.DAILY, apply("비타민C : 표시량(500mg/2.4g)", "1일 2회, 1회 2캡슐(1,190mg)").basisCheck)
+    }
+
+    @Test
+    fun `성분마다 분모 표기가 달라도 값이 같으면 하나로 본다`() {
+        val text = "1. 비타민C : 표시량(500mg/2,400mg)\n2. 아연 : 표시량(8.5mg/2.4g)"
+        assertEquals(BasisCheck.DAILY, apply(text, "1일 2회, 1회 2캡슐(1,200mg)").basisCheck)
     }
 
     @Test

@@ -40,7 +40,6 @@ class InitialLoadJobTest {
         client, RawStore(Files.createTempDirectory("raw")), upserter, cursorRepository, noLock(), Clock.systemDefaultZone(),
     )
 
-    // 커서 저장(save) 호출 수. 실패한 적재가 커서를 남기면 증분이 빠진 구간을 건너뛴다.
     @Test
     fun `받은 수가 total_count보다 많으면 경고만 하고 끝까지 받는다`() {
         // 당일 신고 제품이 행에는 나오고 total_count는 아직 옛 값이다. 마지막 페이지에서 1건 더 온다.
@@ -64,6 +63,7 @@ class InitialLoadJobTest {
         assertEquals(0, cursorSaves())
     }
 
+    // 커서 저장(save) 호출 수. 실패한 적재가 커서를 남기면 증분이 빠진 구간을 건너뛴다.
     private fun cursorSaves() = mockingDetails(cursorRepository).invocations.count { it.method.name == "save" }
 
     @Test

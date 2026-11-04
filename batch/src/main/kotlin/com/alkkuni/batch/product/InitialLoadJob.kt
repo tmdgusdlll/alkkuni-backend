@@ -53,8 +53,8 @@ class InitialLoadJob(
 
         // 덜 받은 것만 실패로 본다. 더 받은 것은 당일 신고 제품이 행에는 바로 나오고 total_count는 늦게 따라오는 경우다
         // (2026-11-04 total_count 46,179에 46,182건). 받은 행은 전부 저장했으니 잃은 데이터가 없다.
-        // ponytail: 새 행 n건과 빠진 행 m건(n ≥ m)이 겹치면 빠짐이 가려진다. 빠진 제품은 다음 증분이나 전체 대사가 받는다.
-        // 또 forEachPage는 total_count까지만 페이지를 요청하므로, 늘어난 행이 다음 페이지로 넘어가면 그 행은 이번에 받지 못한다(다음 실행이 받는다).
+        // ponytail: 새 행 n건과 빠진 행 m건(n ≥ m)이 겹치면 빠짐이 가려진다. 빠짐은 페이징 도중 수정으로 행이 밀릴 때라 드물다.
+        // 초기 적재에서 가려진 제품은 수정일이 바뀌지 않으면 증분으로도 안 들어오고, 전체 대사(파일 방식)가 생겨야 잡힌다.
         check(seen.size >= totalCount) {
             "$SERVICE 받은 신고번호 ${seen.size}건이 total_count ${totalCount}건보다 적다. 도중에 데이터가 바뀌었을 수 있으니 다시 실행한다."
         }
@@ -64,7 +64,7 @@ class InitialLoadJob(
         val cursor = cursorRepository.findByIdOrNull(SERVICE)?.apply { advance(collectedAt.toLocalDate(), now) }
             ?: IngestionCursor(SERVICE, collectedAt.toLocalDate(), now)
         cursorRepository.save(cursor)
-        log.info("{} 초기 적재 완료: {}건, 새로 쓰거나 바뀐 제품 {}건", SERVICE, totalCount, changed)
+        log.info("{} 초기 적재 완료: {}건, 새로 쓰거나 바뀐 제품 {}건", SERVICE, seen.size, changed)
     }
 
     companion object {
