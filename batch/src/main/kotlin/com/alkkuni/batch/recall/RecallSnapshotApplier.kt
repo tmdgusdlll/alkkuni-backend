@@ -28,7 +28,7 @@ class RecallSnapshotApplier(private val recallRepository: RecallRepository) {
         val listedCount = existing.values.count { it.listStatus == RecallListStatus.LISTED }
 
         // 점검·장애로 목록이 비거나(INFO-200은 0건 정상 응답으로 온다) 크게 줄어 온 걸 "회수 종료"로 반영하지 않는다.
-        // ponytail: 비율 기준이라 그보다 작게 덜 온 응답은 못 거른다. DELISTED를 화면·알림에 쓰기 시작하면 N일 연속 미노출 기준으로 바꾼다(PLANNING "회수 수집").
+        // ponytail: 비율 기준이라 total_count까지 줄여 절반 미만으로 덜 온 오류 응답(300→200 등)은 못 거른다. DELISTED를 화면·알림에 쓰기 시작하면 N일 연속 미노출 기준으로 바꾼다(PLANNING "회수 수집").
         val delistSkipped = incompleteReason
             ?: if (toDelist.size * 2 > listedCount) {
                 "목록에 있던 ${listedCount}건 중 ${toDelist.size}건이 한 번에 빠졌다(받은 ${rows.size}건). 응답 이상으로 본다"
