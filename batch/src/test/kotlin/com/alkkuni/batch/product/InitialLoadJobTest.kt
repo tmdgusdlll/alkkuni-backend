@@ -41,6 +41,29 @@ class InitialLoadJobTest {
     )
 
     // 커서 저장(save) 호출 수. 실패한 적재가 커서를 남기면 증분이 빠진 구간을 건너뛴다.
+    @Test
+    fun `받은 수가 total_count보다 많으면 경고만 하고 끝까지 받는다`() {
+        // 당일 신고 제품이 행에는 나오고 total_count는 아직 옛 값이다. 마지막 페이지에서 1건 더 온다.
+        expectPage(1, 1000, total = 1001, reportNos = (1..1000).map { "P$it" })
+        expectPage(1001, 2000, total = 1001, reportNos = listOf("P1001", "P1002"))
+
+        job.run(DefaultApplicationArguments())
+
+        assertEquals(1002, received.size)
+        assertEquals(1, cursorSaves())
+    }
+
+    @Test
+    fun `받은 수가 total_count보다 적으면 실패하고 커서를 저장하지 않는다`() {
+        expectPage(1, 1000, total = 1002, reportNos = (1..1000).map { "P$it" })
+        expectPage(1001, 2000, total = 1002, reportNos = listOf("P1001"))
+
+        val e = assertFailsWith<IllegalStateException> { job.run(DefaultApplicationArguments()) }
+
+        assertTrue(e.message!!.contains("받은 신고번호 1001건이 total_count 1002건보다 적다"), e.message)
+        assertEquals(0, cursorSaves())
+    }
+
     private fun cursorSaves() = mockingDetails(cursorRepository).invocations.count { it.method.name == "save" }
 
     @Test

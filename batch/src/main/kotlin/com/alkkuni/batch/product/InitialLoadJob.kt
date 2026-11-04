@@ -20,7 +20,7 @@ import java.time.LocalDateTime
  *
  * 페이징 도중 행이 추가·삭제되면 위치가 밀려 경계의 행이 빠질 수 있다. 그래서 둘 다 확인하고 실패로 끝낸다.
  * - 페이지마다 total_count가 첫 페이지와 같은지. 받은 범위에서 하나 삭제되고 개수가 함께 줄면 끝의 비교만으로는 못 잡는다.
- * - 끝에 받은 신고번호 수가 total_count와 같은지.
+ * - 끝에 받은 신고번호 수가 total_count보다 적지 않은지. 많은 건 경고만 남긴다(total_count 갱신 지연).
  * upsert가 멱등이라 다시 돌리면 된다(47회 호출, 시간당 한도 100회 안).
  * 증분 수집과 같은 잠금 키를 써서 둘이 겹쳐 돌지 않는다.
  */
@@ -51,9 +51,14 @@ class InitialLoadJob(
             log.info("{} {}페이지: 누적 {}/{}건", SERVICE, pageNo, seen.size, page.totalCount)
         }
 
-        check(seen.size == totalCount) {
-            "$SERVICE 받은 신고번호 ${seen.size}건이 total_count ${totalCount}건과 다르다. 도중에 데이터가 바뀌었을 수 있으니 다시 실행한다."
+        // 덜 받은 것만 실패로 본다. 더 받은 것은 당일 신고 제품이 행에는 바로 나오고 total_count는 늦게 따라오는 경우다
+        // (2026-11-04 total_count 46,179에 46,182건). 받은 행은 전부 저장했으니 잃은 데이터가 없다.
+        // ponytail: 새 행 n건과 빠진 행 m건(n ≥ m)이 겹치면 빠짐이 가려진다. 빠진 제품은 다음 증분이나 전체 대사가 받는다.
+        // 또 forEachPage는 total_count까지만 페이지를 요청하므로, 늘어난 행이 다음 페이지로 넘어가면 그 행은 이번에 받지 못한다(다음 실행이 받는다).
+        check(seen.size >= totalCount) {
+            "$SERVICE 받은 신고번호 ${seen.size}건이 total_count ${totalCount}건보다 적다. 도중에 데이터가 바뀌었을 수 있으니 다시 실행한다."
         }
+        if (seen.size > totalCount) log.warn("{} 받은 신고번호 {}건이 total_count {}건보다 많다(total_count 갱신 지연)", SERVICE, seen.size, totalCount)
         // 증분 수집이 이어 받을 기준. 시작 시각 기준이라 적재 도중 바뀐 건도 다음 증분(커서 - 1일)이 다시 받는다.
         val now = LocalDateTime.now(clock)
         val cursor = cursorRepository.findByIdOrNull(SERVICE)?.apply { advance(collectedAt.toLocalDate(), now) }
