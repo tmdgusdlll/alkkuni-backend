@@ -16,7 +16,7 @@ class AmountUnitTest {
 
     @Test
     fun `비타민 환산 단위는 표기 변형을 하나로 모은다`() {
-        for (unit in listOf("mg α-TE", "mgα-TE", "mg a-TE", "mga-TE", "㎎ɑ-TE", "mg-aTE", "mg α -TE")) assertNormalized("10", "mg α-TE", "10", unit)
+        for (unit in listOf("mg α-TE", "mgα-TE", "mg a-TE", "mga-TE", "㎎ɑ-TE", "mg-aTE", "mg α -TE", "mg 𝛂-TE", "mg alpha-TE", "mg DLα-TE")) assertNormalized("10", "mg α-TE", "10", unit)
         for (unit in listOf("mg NE", "mgNE", "㎎ NE", "mg-NE")) assertNormalized("15", "mg NE", "15", unit)
         for (unit in listOf("μg RAE", "ugRAE", "㎍ RAE", "μgREA")) assertNormalized("0.7", "mg RAE", "700", unit)
         for (unit in listOf("㎍RE", "ug RE", "µgRE")) assertNormalized("0.7", "mg RE", "700", unit)
@@ -55,6 +55,9 @@ class AmountUnitTest {
         assertEquals(0, BigDecimal("0.7").compareTo(AmountUnit.toMg(BigDecimal("700"), "μg RAE")))
         assertEquals(0, BigDecimal("10").compareTo(AmountUnit.toMg(BigDecimal("10"), "mga-TE")))
         assertNull(AmountUnit.toMg(BigDecimal.ONE, "CFU"))
+        // 1일 함량에는 쓰지 않는 모르는 접미사도 이상치 검사에서는 질량으로 본다(리뷰 전 규칙 유지)
+        assertEquals(0, BigDecimal("2").compareTo(AmountUnit.toMg(BigDecimal("2"), "mg E")))
+        assertNull(AmountUnit.normalize(BigDecimal("2"), "mg E"))
     }
 
     private fun assertNormalized(expected: String, expectedUnit: String, value: String, unit: String) {

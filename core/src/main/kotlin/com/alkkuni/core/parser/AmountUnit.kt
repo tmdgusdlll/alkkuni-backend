@@ -41,15 +41,19 @@ object AmountUnit {
     }
 
     // 환산 기준 표시는 무시하고 질량(mg)만 본다. 함량 이상치 검사용.
+    // 모르는 접미사도 영문자로 바로 이어지지 않으면 질량으로 본다("mg 𝛂-TE", "mg E"). 1일 함량(normalize)보다 넓게 잡아야 이상치를 놓치지 않는다.
     fun toMg(value: BigDecimal, unit: String): BigDecimal? =
-        mass.find(unit.trim().lowercase())?.takeIf { equivalent(it.groupValues[2]) != null }?.let { value.multiply(mgPer.getValue(it.groupValues[1])) }
+        mass.find(unit.trim().lowercase())
+            ?.takeIf { equivalent(it.groupValues[2]) != null || it.groupValues[2].firstOrNull() !in 'a'..'z' }
+            ?.let { value.multiply(mgPer.getValue(it.groupValues[1])) }
 
     // 질량 단위 뒤에 붙은 환산 기준. "" → 없음, "a-te"·"ɑ-te"·"te" → α-TE, "rea" → RAE, "def" → DFE(오타). 모르면 null.
     private fun equivalent(suffix: String): String? {
         val s = suffix.replace(Regex("""[\s\-‑]"""), "").uppercase()
         return when {
             s.isEmpty() -> ""
-            s.endsWith("TE") && s.length <= 3 -> "α-TE"
+            // α 표기 변형이 많다(a, ɑ, ∝, 𝛂, alpha, DLα). 토코페롤 당량(TE)은 α-TE 하나뿐이다.
+            s.endsWith("TE") -> "α-TE"
             s == "NE" -> "NE"
             s == "RAE" || s == "REA" -> "RAE"
             s == "RE" -> "RE"

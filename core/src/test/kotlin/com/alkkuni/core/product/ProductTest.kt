@@ -187,6 +187,12 @@ class ProductTest {
         assertDaily(null, null, "진세노사이드 : 표시량(12mg/20g)", "1일 2회, 1회 1스푼(5g)")
         // 환산할 수 없는 단위
         assertDaily(null, null, "비타민D : 표시량(400IU/2g)", "1일 1회, 1회 1포(2g)")
+        // "/1.000mg"(1,000mg의 오기)을 1mg당 농도로 보면 1000배가 된다. mg 분모는 농도로 보지 않는다(백세시크릿 부아메라)
+        assertDaily(null, null, "루테인 : 표시량(10mg/1.000mg)", "1일 2회, 1회 1캡슐(500mg)")
+        // 1회 중량 "2.000 mg"은 2mg인지 2,000mg인지 몰라 비우므로 /g 분모를 계산하지 않는다(덴티솔루션)
+        assertDaily(null, null, "총 플라보노이드 : 표시량(17mg/1g)", "1일 1회, 1회 2정(2.000 mg)을 충분한 물과 함께 섭취하십시오.")
+        // 분모 0은 원문 오기라 하루치로 가정하지 않는다
+        assertDaily(null, null, "비타민C : 표시량(100mg/0mg)", "1일 1회, 1회 2정")
     }
 
     private fun assertDaily(expected: String?, expectedUnit: String?, text: String, intake: String) {

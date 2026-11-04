@@ -15,15 +15,15 @@ object AmountSanityCheck {
 
         // 1) 함량이 분모보다 크면 불가능하다. 분모 오기("210mg/1.600mg")와 단위 오기("2.4g/200mg", ㎍을 g으로)를 잡는다.
         for (a in amounts) {
-            val amount = toMg(a.amount, a.unit) ?: continue
-            val basis = toMg(a.basisAmount, a.basisUnit) ?: continue
+            val amount = AmountUnit.toMg(a.amount, a.unit) ?: continue
+            val basis = AmountUnit.toMg(a.basisAmount, a.basisUnit) ?: continue
             if (amount > basis) issues += "함량이 분모보다 큼: ${a.rawName} ${a.amount.plain()}${a.unit}/${a.basisAmount.plain()}${a.basisUnit}"
         }
 
         // 2) 같은 제품 안에서 분모가 정확히 1000배 차이 나면 쉼표·마침표나 g·mg를 잘못 적은 것이다("1.6mg"과 "1,600mg").
         // 분모가 단위만 있는 농도 표기("4mg/g")도 1로 넣어 비교한다. 빼면 "1.000mg"(1,000mg의 오기)이 함께 빠진다.
         val bases = amounts
-            .mapNotNull { a -> toMg(a.basisAmount, a.basisUnit)?.let { it to "${a.basisAmount.plain()}${a.basisUnit}" } }
+            .mapNotNull { a -> AmountUnit.toMg(a.basisAmount, a.basisUnit)?.let { it to "${a.basisAmount.plain()}${a.basisUnit}" } }
             .distinctBy { it.first.stripTrailingZeros() }
         for ((small, smallText) in bases) {
             bases.firstOrNull { (large, _) -> large.compareTo(small * thousand) == 0 }
@@ -32,7 +32,6 @@ object AmountSanityCheck {
         return issues
     }
 
-    private fun toMg(value: BigDecimal, unit: String): BigDecimal? = AmountUnit.toMg(value, unit)
 
     private fun BigDecimal.plain() = stripTrailingZeros().toPlainString()
 }

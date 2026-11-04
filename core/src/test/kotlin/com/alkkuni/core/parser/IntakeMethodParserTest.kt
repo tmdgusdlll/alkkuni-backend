@@ -22,6 +22,15 @@ class IntakeMethodParserTest {
     }
 
     @Test
+    fun `마침표 천 단위로 보이는 mg 중량은 비운다`() {
+        val intake = IntakeMethodParser.parse("1일 1회, 1회 2정(2.000 mg)을 충분한 물과 함께 섭취하십시오.")!!
+        assertEquals("2", intake.unitsPerTime.toPlainString())
+        assertNull(intake.amountPerTime)
+        // g은 "1.500g"(1.5g)이 자연스러워 그대로 읽는다
+        assertEquals(0, BigDecimal("1500").compareTo(IntakeMethodParser.parse("1일 1회, 1회 1포(1.500g)")!!.amountPerTime))
+    }
+
+    @Test
     fun `횟수가 없으면 하루 한 번으로 본다`() {
         assertParsed("1일 2캡슐을 물과 함께 섭취.", 1, "2", "캡슐")
     }

@@ -169,13 +169,19 @@ class Product(
             .singleOrNull()
         val perTime = intake.amountPerTime
         if (basis == null || perTime == null || basis.second != intake.amountUnit) return BasisCheck.UNVERIFIED
-        val (basisAmount, _) = basis
-        val perDay = perTime.multiply(intake.timesPerDay.toBigDecimal())
-        return when {
-            near(perDay, basisAmount) -> BasisCheck.DAILY
-            intake.timesPerDay > 1 && near(perTime, basisAmount) -> BasisCheck.PER_SERVING
-            else -> BasisCheck.MISMATCH
+        return when (servingRatio(basis.first, perTime, intake.timesPerDay)) {
+            null -> BasisCheck.MISMATCH
+            BigDecimal.ONE -> BasisCheck.DAILY
+            else -> BasisCheck.PER_SERVING
         }
+    }
+
+    // 분모 → 1일 섭취량 배율. 분모가 하루치면 1, 1회분이면 1일 횟수, 둘 다 아니면 null.
+    // 분모 확인(checkBasis)과 1일 함량(dailyAmount)이 같은 판단을 쓰게 한 곳에 둔다.
+    private fun servingRatio(basis: BigDecimal, perTime: BigDecimal, times: Int): BigDecimal? = when {
+        near(perTime.multiply(times.toBigDecimal()), basis) -> BigDecimal.ONE
+        times > 1 && near(perTime, basis) -> times.toBigDecimal()
+        else -> null
     }
 
     /**
@@ -189,20 +195,21 @@ class Product(
         // 원료는 하루 섭취량이 없다. 비교 대상도 아니다.
         if (rawMaterial) return null
         val (amount, unit) = AmountUnit.normalize(parsed.amount, parsed.unit) ?: return null
-        // "4mg/g"처럼 분모에 숫자가 없으면 파서가 1을 넣는다. 단위당 농도다.
-        val perUnit = parsed.basisAmount.compareTo(BigDecimal.ONE) == 0
+        // "4mg/g"처럼 분모에 숫자가 없으면 파서가 1을 넣는다. g·ml당 농도다.
+        // "/1.000mg"(1,000mg의 오기)이 1mg으로 읽혀 1mg당 농도로 보면 1000배가 되므로 mg 분모는 농도로 보지 않는다.
+        val perUnit = parsed.basisAmount.compareTo(BigDecimal.ONE) == 0 && parsed.basisUnit.lowercase() in PER_UNIT_BASIS
         val basis = IntakeMethodParser.normalize(parsed.basisAmount, parsed.basisUnit)
         val perTime = intakeAmountPerTime
         val times = intakeTimesPerDay
-        if (basis == null || basis.first.signum() == 0 || perTime == null || times == null || basis.second != intakeAmountUnit) {
+        // 분모 0은 원문 오기다. 하루치로 가정하지 않는다.
+        if (basis?.first?.signum() == 0) return null
+        if (basis == null || perTime == null || times == null || basis.second != intakeAmountUnit) {
             return if (perUnit) null else amount.clean() to unit
         }
-        val perDay = perTime.multiply(times.toBigDecimal())
-        val ratio = when {
-            perUnit -> perDay.divide(basis.first, MathContext.DECIMAL64)
-            near(perDay, basis.first) -> BigDecimal.ONE
-            times > 1 && near(perTime, basis.first) -> times.toBigDecimal()
-            else -> return null
+        val ratio = if (perUnit) {
+            perTime.multiply(times.toBigDecimal()).divide(basis.first, MathContext.DECIMAL64)
+        } else {
+            servingRatio(basis.first, perTime, times) ?: return null
         }
         return amount.multiply(ratio).clean() to unit
     }
@@ -215,5 +222,6 @@ class Product(
 
     companion object {
         private val TOLERANCE = BigDecimal("0.02")
+        private val PER_UNIT_BASIS = setOf("g", "ml", "㎖")
     }
 }
