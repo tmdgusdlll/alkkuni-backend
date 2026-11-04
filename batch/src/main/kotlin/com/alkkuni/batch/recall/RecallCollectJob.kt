@@ -14,8 +14,10 @@ import java.time.LocalDateTime
 /**
  * I0490 회수·판매중지 목록 전체(약 400건)를 받아 이전 스냅샷과 비교한다(PLANNING "회수 수집").
  *
- * "목록에 없으면 빠짐"으로 판단하므로, 덜 받은 목록을 반영하면 멀쩡한 회수가 빠짐으로 바뀐다.
- * 그래서 다 받았는지(일련번호 수 = total_count) 확인한 뒤에만 반영하고, 반영 단계에서 급감도 한 번 더 막는다.
+ * "목록에 없으면 빠짐"으로 판단하므로, 덜 받은 목록으로 빠짐 처리를 하면 멀쩡한 회수가 빠짐으로 바뀐다.
+ * 반대로 받은 건은 덜 받았어도 목록에 있다는 게 확실하다. 그래서 다 받지 못한 날(일련번호 수 ≠ total_count)에도
+ * 새 건 저장·갱신은 하고 빠짐 처리만 건너뛴 뒤, 실패로 끝내 알람이 울리게 한다.
+ * 덜 받은 날 전부 멈추면 그 안에 있던 새 회수도 저장되지 않아 알림이 늦어진다.
  *
  * `alkkuni.job=recall`로 띄우면 한 번 돌고 끝난다. 매일 실행은 EC2 cron이 맡는다.
  */
@@ -37,18 +39,25 @@ class RecallCollectJob(
 
         val totalCount = client.forEachPage(SERVICE) { pageNo, page ->
             rawStore.save(SERVICE, collectedAt, "list_%03d.json".format(pageNo), page.rawBody)
-            page.rows.mapTo(rows, I0490Row::from)
+            for (node in page.rows) {
+                // 깨진 행 하나 때문에 나머지 회수까지 버리지 않는다. 건너뛴 행만큼 아래 건수가 모자라 빠짐 처리는 하지 않는다.
+                try {
+                    rows += I0490Row.from(node)
+                } catch (e: IllegalArgumentException) {
+                    log.warn("{} 행을 건너뜀: {}", SERVICE, e.message)
+                }
+            }
         }
 
         val seqCount = rows.distinctBy { it.sourceSeq }.size
-        check(seqCount == totalCount) {
-            "$SERVICE 받은 일련번호 ${seqCount}건이 total_count ${totalCount}건과 다르다. 반영하지 않는다."
-        }
-        val result = applier.apply(rows, collectedAt)
+        val incomplete = if (seqCount != totalCount) "받은 일련번호 ${seqCount}건이 total_count ${totalCount}건과 다르다" else null
+        val result = applier.apply(rows, collectedAt, incomplete)
         log.info(
             "{} 회수 수집 완료: {}건 받음, 새 회수 {}건, 목록에서 빠짐 {}건, 다시 올라옴 {}건",
             SERVICE, seqCount, result.created, result.delisted, result.relisted,
         )
+        // 새 건·갱신은 이미 반영했다. 빠짐 처리를 건너뛴 날은 실패로 끝내 다음 실행 전에 사람이 보게 한다.
+        check(result.delistSkipped == null) { "$SERVICE 빠짐 처리를 건너뛰었다: ${result.delistSkipped}" }
     }
 
     companion object {

@@ -81,27 +81,46 @@ class RecallCollectJobTest {
     }
 
     @Test
-    fun `목록에 있던 건의 절반 넘게 빠지면 반영하지 않는다`() {
-        givenStored(recall("1"), recall("2"), recall("3"))
-        expectPage(total = 1, seqs = listOf("1"))
+    fun `목록에 있던 건의 절반 넘게 빠지면 빠짐 처리만 건너뛰고 새 건은 저장한다`() {
+        val stored = recall("2")
+        givenStored(recall("1"), stored, recall("3"))
+        expectPage(total = 2, seqs = listOf("1", "4"))
 
         assertFailsWith<IllegalStateException> { job.run(DefaultApplicationArguments()) }
-        assertEquals(emptyList(), created())
+
+        assertEquals(listOf("4"), created())
+        assertEquals(RecallListStatus.LISTED, stored.listStatus)
     }
 
     @Test
-    fun `받은 일련번호 수가 total_count와 다르면 반영하지 않는다`() {
-        givenStored()
+    fun `받은 일련번호 수가 total_count와 다르면 새 건은 저장하고 빠짐 처리는 하지 않은 채 실패한다`() {
+        val stored = recall("9")
+        givenStored(stored)
         expectPage(total = 3, seqs = listOf("1", "2"))
 
         val e = assertFailsWith<IllegalStateException> { job.run(DefaultApplicationArguments()) }
 
         assertTrue(e.message!!.contains("받은 일련번호 2건이 total_count 3건과 다르다"), e.message)
-        assertEquals(0, mockingDetails(repository).invocations.size)
+        assertEquals(listOf("1", "2"), created().sorted())
+        assertEquals(RecallListStatus.LISTED, stored.listStatus)
     }
 
-    private fun expectPage(total: Int, seqs: List<String>) {
-        val rows = seqs.joinToString(",") { """{"RTRVLDSUSE_SEQ":"$it","PRDTNM":"제품$it","PRDLST_REPORT_NO":""}""" }
+    @Test
+    fun `제품명이 빈 행은 건너뛰고 나머지는 저장하되 빠짐 처리는 하지 않는다`() {
+        val stored = recall("9")
+        givenStored(stored)
+        expectPage(total = 2, seqs = listOf("1"), extraRow = """{"RTRVLDSUSE_SEQ":"2","PRDTNM":""}""")
+
+        val e = assertFailsWith<IllegalStateException> { job.run(DefaultApplicationArguments()) }
+
+        assertTrue(e.message!!.contains("받은 일련번호 1건이 total_count 2건과 다르다"), e.message)
+        assertEquals(listOf("1"), created())
+        assertEquals(RecallListStatus.LISTED, stored.listStatus)
+    }
+
+    private fun expectPage(total: Int, seqs: List<String>, extraRow: String? = null) {
+        val rows = (seqs.map { """{"RTRVLDSUSE_SEQ":"$it","PRDTNM":"제품$it","PRDLST_REPORT_NO":""}""" } + listOfNotNull(extraRow))
+            .joinToString(",")
         server.expect(requestTo("${FoodSafetyClient.BASE_URL}/k/I0490/json/1/1000")).andRespond(
             withSuccess(
                 """{"I0490":{"total_count":"$total","row":[$rows],"RESULT":{"CODE":"INFO-000","MSG":"정상"}}}""",
