@@ -19,6 +19,9 @@ import java.time.LocalDateTime
  * 새 건 저장·갱신은 하고 빠짐 처리만 건너뛴 뒤, 실패로 끝내 알람이 울리게 한다.
  * 덜 받은 날 전부 멈추면 그 안에 있던 새 회수도 저장되지 않아 알림이 늦어진다.
  *
+ * [RecallSnapshotApplier.apply]가 자기 트랜잭션으로 먼저 커밋하고, 그 뒤 마지막 check가 실패한다.
+ * 이 클래스(run·collect)에 `@Transactional`을 걸면 그 실패가 저장까지 롤백하므로 걸지 않는다.
+ *
  * `alkkuni.job=recall`로 띄우면 한 번 돌고 끝난다. 매일 실행은 EC2 cron이 맡는다.
  */
 @Component
@@ -36,6 +39,7 @@ class RecallCollectJob(
     private fun collect() {
         val collectedAt = LocalDateTime.now(clock)
         val rows = mutableListOf<I0490Row>()
+        var skipped = 0
 
         val totalCount = client.forEachPage(SERVICE) { pageNo, page ->
             rawStore.save(SERVICE, collectedAt, "list_%03d.json".format(pageNo), page.rawBody)
@@ -44,13 +48,20 @@ class RecallCollectJob(
                 try {
                     rows += I0490Row.from(node)
                 } catch (e: IllegalArgumentException) {
+                    skipped++
                     log.warn("{} 행을 건너뜀: {}", SERVICE, e.message)
                 }
             }
         }
 
         val seqCount = rows.distinctBy { it.sourceSeq }.size
-        val incomplete = if (seqCount != totalCount) "받은 일련번호 ${seqCount}건이 total_count ${totalCount}건과 다르다" else null
+        // 식약처가 덜 보낸 건지, 다 왔는데 깨진 행을 우리가 버린 건지 실패 메시지만으로 구분되게 한다.
+        val skippedNote = if (skipped > 0) "(깨진 행 ${skipped}건 건너뜀)" else ""
+        val incomplete = if (seqCount != totalCount) {
+            "받은 일련번호 ${seqCount}건이 total_count ${totalCount}건과 다르다$skippedNote"
+        } else {
+            null
+        }
         val result = applier.apply(rows, collectedAt, incomplete)
         log.info(
             "{} 회수 수집 완료: {}건 받음, 새 회수 {}건, 목록에서 빠짐 {}건, 다시 올라옴 {}건",

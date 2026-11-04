@@ -113,7 +113,7 @@ class RecallCollectJobTest {
 
         val e = assertFailsWith<IllegalStateException> { job.run(DefaultApplicationArguments()) }
 
-        assertTrue(e.message!!.contains("받은 일련번호 1건이 total_count 2건과 다르다"), e.message)
+        assertTrue(e.message!!.contains("받은 일련번호 1건이 total_count 2건과 다르다(깨진 행 1건 건너뜀)"), e.message)
         assertEquals(listOf("1"), created())
         assertEquals(RecallListStatus.LISTED, stored.listStatus)
     }
