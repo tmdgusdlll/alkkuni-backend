@@ -24,7 +24,8 @@ data class ParseResult(
 object IngredientAmountParser {
 
     // 규칙을 바꾸면 올린다. product_ingredient.parser_version에 남아 재파싱 대상을 고르는 데 쓴다.
-    const val VERSION = "1"
+    // 섭취방법 파서(IntakeMethodParser)와 분모 확인 규칙을 바꿀 때도 올린다. 2: 섭취방법 파싱 추가.
+    const val VERSION = "2"
 
     // (?U): 원문의 전각 공백·숫자도 \s·\d로 잡는다.
     // 쉼표는 세 자리 구분일 때만 받는다. "1,5g", "2,25g"은 소수점인지 오타인지 알 수 없어 추측하지 않고 버린다.

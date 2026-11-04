@@ -74,7 +74,7 @@ class IncrementalCollectJobTest {
     }
 
     @Test
-    fun `받은 신고번호 수가 total_count와 다르면 커서를 옮기지 않는다`() {
+    fun `받은 신고번호 수가 total_count보다 적으면 커서를 옮기지 않는다`() {
         // 1페이지를 받은 뒤 앞쪽 행이 수정돼 밀리면서 1001번째 행이 1페이지 범위로 당겨졌다. 2페이지에서 다시 받지 못한다.
         val cursor = givenCursor(today.minusDays(1))!!
         expectPage(since = "20261101", start = 1, end = 1000, total = 1001, reportNos = (1..1000).map { "P$it" })
@@ -82,9 +82,21 @@ class IncrementalCollectJobTest {
 
         val e = assertFailsWith<IllegalStateException> { job.run(DefaultApplicationArguments()) }
 
-        assertTrue(e.message!!.contains("받은 신고번호 1000건이 total_count 1001건과 다르다"), e.message)
+        assertTrue(e.message!!.contains("받은 신고번호 1000건이 total_count 1001건보다 적다"), e.message)
         assertEquals(today.minusDays(1), cursor.lastCollectedDate)
         assertEquals(0, cursorSaves())
+    }
+
+    @Test
+    fun `받은 신고번호 수가 total_count보다 많으면 경고만 하고 커서를 옮긴다`() {
+        val cursor = givenCursor(today.minusDays(1))!!
+        expectPage(since = "20261101", start = 1, end = 1000, total = 1, reportNos = listOf("P1", "P2"))
+
+        job.run(DefaultApplicationArguments())
+
+        assertEquals(listOf("P1", "P2"), received)
+        assertEquals(today, cursor.lastCollectedDate)
+        assertEquals(1, cursorSaves())
     }
 
     @Test

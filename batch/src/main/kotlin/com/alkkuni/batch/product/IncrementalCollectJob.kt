@@ -20,8 +20,9 @@ import java.time.LocalDateTime
  *   (오늘 날짜 CHNG_DT는 19시 전에 INFO-700). 겹친 하루는 수집 도중이나 직후에 바뀐 행을 다시 받는다.
  *   겹친 행은 upsert가 해시·판정 버전으로 건너뛴다.
  * - 하루 겹침만으로는 페이징 경계에서 빠진 행이 다 돌아오지 않는다(조회 시작일 날짜의 행은 다음 실행 범위 밖).
- *   그래서 초기 적재와 같이 total_count가 페이지마다 같은지(forEachPage), 받은 신고번호 수가 total_count와 같은지 확인하고,
- *   다르면 커서를 옮기지 않고 실패로 끝낸다. 다음 실행이 같은 구간부터 다시 받는다.
+ *   그래서 초기 적재와 같이 total_count가 페이지마다 같은지(forEachPage), 받은 신고번호 수가 total_count보다 적지 않은지 확인하고,
+ *   적으면 커서를 옮기지 않고 실패로 끝낸다. 다음 실행이 같은 구간부터 다시 받는다. 많으면 total_count 갱신 지연이라 경고만 남긴다.
+ *   한계: 빠진 행과 새 행이 한 실행에 겹치면 빠짐이 가려지고 커서가 옮겨져, 그 행은 전체 대사 전까지 들어오지 않는다.
  * - 삭제는 CHNG_DT로 잡지 못한다. 전체 대사(파일 방식)가 맡는다.
  *
  * `alkkuni.job=incremental`로 띄우면 한 번 수집하고 앱이 끝난다(ADR-009, 필요할 때만 뜨는 컨테이너).
@@ -65,8 +66,12 @@ class IncrementalCollectJob(
             rows.mapTo(seen) { it.reportNo }
         }
 
-        check(seen.size == totalCount) {
-            "$SERVICE CHNG_DT=$since 받은 신고번호 ${seen.size}건이 total_count ${totalCount}건과 다르다. 커서를 옮기지 않고 다음 실행이 다시 받는다."
+        // 덜 받은 것만 실패로 본다. 더 받은 것은 total_count 갱신 지연이다(InitialLoadJob과 같은 이유).
+        check(seen.size >= totalCount) {
+            "$SERVICE CHNG_DT=$since 받은 신고번호 ${seen.size}건이 total_count ${totalCount}건보다 적다. 커서를 옮기지 않고 다음 실행이 다시 받는다."
+        }
+        if (seen.size > totalCount) {
+            log.warn("{} CHNG_DT={} 받은 신고번호 {}건이 total_count {}건보다 많다(total_count 갱신 지연)", SERVICE, since, seen.size, totalCount)
         }
         // 끝까지 성공했을 때만 옮긴다. 도중에 실패하면 커서가 그대로라 다음 실행이 같은 구간부터 다시 받는다.
         cursor.advance(today, LocalDateTime.now(clock))
