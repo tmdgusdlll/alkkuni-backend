@@ -23,7 +23,9 @@ class ProductIngredient(
     basisAmount: BigDecimal,
     basisUnit: String,
     extractionMethod: ExtractionMethod,
-    parserVersion: String
+    parserVersion: String,
+    dailyAmount: BigDecimal?,
+    dailyUnit: String?,
 ) {
 
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -60,5 +62,12 @@ class ProductIngredient(
 
     @Column(nullable = false)
     var parserVersion: String = parserVersion
+        protected set
+
+    // 1일 함량. 단위는 AmountUnit로 통일(mg, mg α-TE, CFU 등). 계산할 수 없으면 null(Product.dailyAmount).
+    var dailyAmount: BigDecimal? = dailyAmount
+        protected set
+
+    var dailyUnit: String? = dailyUnit
         protected set
 }

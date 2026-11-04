@@ -63,6 +63,15 @@ object IntakeMethodParser {
         )
     }
 
+    // "건강기능식품 원료로 사용", "건강기능식품 제조 시 일일 섭취량에 적합한 양을 사용"처럼 원료로 파는 품목의 섭취방법.
+    // "1일 3회", "1회 1g" 같은 소비자 섭취량이 함께 있으면 완제품으로도 팔리므로 원료로 보지 않는다.
+    // 기준규격에는 원료 표시가 없고 섭취방법에만 있는 제품이 약 2,500개다(I0030 2026-11-04).
+    private val rawMaterialUse = Regex("""원료|제조\s*시""")
+    private val consumerDose = Regex("""(?U)1\s*[일회][^가-힣]{0,3}\d""")
+
+    fun isRawMaterialUse(text: String?): Boolean =
+        text != null && rawMaterialUse.containsMatchIn(text) && !consumerDose.containsMatchIn(text)
+
     // 무게는 mg, 부피는 ml로 바꾼다. 개수 단위(정·포 등)나 모르는 단위면 null.
     fun normalize(value: BigDecimal, unit: String): Pair<BigDecimal, String>? = when (unit.lowercase()) {
         "mg", "㎎" -> value to "mg"

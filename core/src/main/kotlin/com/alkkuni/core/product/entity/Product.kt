@@ -1,6 +1,7 @@
 package com.alkkuni.core.product.entity
 
 import com.alkkuni.core.parser.AmountSanityCheck
+import com.alkkuni.core.parser.AmountUnit
 import com.alkkuni.core.parser.IngredientAmountParser
 import com.alkkuni.core.parser.IntakeMethod
 import com.alkkuni.core.parser.IntakeMethodParser
@@ -18,6 +19,7 @@ import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
 import jakarta.persistence.Table
 import java.math.BigDecimal
+import java.math.MathContext
 import java.time.LocalDateTime
 
 @Entity
@@ -135,7 +137,8 @@ class Product(
         }
         val issues = result.unreadLines.map { "못 읽은 줄: $it" } + AmountSanityCheck.issues(result.amounts)
         this.standardText = standardText
-        rawMaterial = standardText?.let(IngredientAmountParser::isRawMaterialOnly) ?: false
+        rawMaterial = standardText?.let(IngredientAmountParser::isRawMaterialOnly) == true ||
+            IntakeMethodParser.isRawMaterialUse(intakeMethod)
         parseStatus = when {
             issues.isNotEmpty() -> ParseStatus.NEEDS_REVIEW
             result.amounts.isEmpty() -> ParseStatus.NO_AMOUNT
@@ -174,6 +177,38 @@ class Product(
             else -> BasisCheck.MISMATCH
         }
     }
+
+    /**
+     * 성분 함량 한 줄의 1일 함량을 통일한 단위(AmountUnit)로 계산한다. 계산할 수 없으면 null.
+     * 1일 함량 = 함량 × (1일 섭취 중량 ÷ 분모). 1일 섭취 중량 = 1회 중량 × 1일 횟수. applyParse 뒤에 부른다.
+     * - 비교할 수 있으면: 분모가 하루치면 그대로, 1회분이면 × 1일 횟수, "/g" 같은 단위당 농도면 × 하루 섭취 중량. 어느 것도 아니면 원문 오류일 수 있어 null.
+     * - 비교할 수 없으면(1회 중량 없음, 무게·부피 섞임, 섭취방법 못 읽음): 전체 중량 분모는 하루치로 가정한다
+     *   (확인된 제품의 94%가 하루치, 추정 여부는 basisCheck로 구분). 단위당 분모는 하루에 몇 g 먹는지 몰라 null.
+     */
+    fun dailyAmount(parsed: ParsedAmount): Pair<BigDecimal, String>? {
+        // 원료는 하루 섭취량이 없다. 비교 대상도 아니다.
+        if (rawMaterial) return null
+        val (amount, unit) = AmountUnit.normalize(parsed.amount, parsed.unit) ?: return null
+        // "4mg/g"처럼 분모에 숫자가 없으면 파서가 1을 넣는다. 단위당 농도다.
+        val perUnit = parsed.basisAmount.compareTo(BigDecimal.ONE) == 0
+        val basis = IntakeMethodParser.normalize(parsed.basisAmount, parsed.basisUnit)
+        val perTime = intakeAmountPerTime
+        val times = intakeTimesPerDay
+        if (basis == null || basis.first.signum() == 0 || perTime == null || times == null || basis.second != intakeAmountUnit) {
+            return if (perUnit) null else amount.clean() to unit
+        }
+        val perDay = perTime.multiply(times.toBigDecimal())
+        val ratio = when {
+            perUnit -> perDay.divide(basis.first, MathContext.DECIMAL64)
+            near(perDay, basis.first) -> BigDecimal.ONE
+            times > 1 && near(perTime, basis.first) -> times.toBigDecimal()
+            else -> return null
+        }
+        return amount.multiply(ratio).clean() to unit
+    }
+
+    // 0.700 → 0.7. 1E+8처럼 지수 표기가 되지 않게 음수 scale은 0으로 둔다.
+    private fun BigDecimal.clean() = stripTrailingZeros().let { if (it.scale() < 0) it.setScale(0) else it }
 
     // 표기 반올림(0.45g × 2 = 900mg vs 분모 905mg)을 같다고 본다. 실제 데이터에서 2% 안에 93%가 맞았다.
     private fun near(a: BigDecimal, b: BigDecimal) = (a - b).abs() <= b.multiply(TOLERANCE)

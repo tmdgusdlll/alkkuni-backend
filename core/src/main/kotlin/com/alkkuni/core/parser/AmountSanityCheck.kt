@@ -7,18 +7,7 @@ import java.math.BigDecimal
 object AmountSanityCheck {
 
     // 질량 단위만 비교한다. "IU", "CFU"처럼 질량으로 바꿀 수 없는 단위는 건너뛴다.
-    // "mg α-TE", "mg NE", "㎍ DFE"는 앞의 질량 단위로 본다. 환산 기준이 붙었을 뿐 질량이다.
-    private val massPrefix = Regex("""^(kg|mg|㎎|μg|µg|㎍|ug|g)(?![a-z])""")
-    private val mgPerUnit = mapOf(
-        "kg" to BigDecimal("1000000"),
-        "g" to BigDecimal("1000"),
-        "mg" to BigDecimal.ONE,
-        "㎎" to BigDecimal.ONE,
-        "μg" to BigDecimal("0.001"),
-        "µg" to BigDecimal("0.001"),
-        "㎍" to BigDecimal("0.001"),
-        "ug" to BigDecimal("0.001"),
-    )
+    // "mg α-TE", "mg NE", "㎍ DFE"는 앞의 질량 단위로 본다(AmountUnit.toMg). 환산 기준이 붙었을 뿐 질량이다.
     private val thousand = BigDecimal(1000)
 
     fun issues(amounts: List<ParsedAmount>): List<String> {
@@ -43,7 +32,7 @@ object AmountSanityCheck {
         return issues
     }
 
-    private fun toMg(value: BigDecimal, unit: String): BigDecimal? = massPrefix.find(unit.trim().lowercase())?.let { mgPerUnit[it.value] }?.let { value * it }
+    private fun toMg(value: BigDecimal, unit: String): BigDecimal? = AmountUnit.toMg(value, unit)
 
     private fun BigDecimal.plain() = stripTrailingZeros().toPlainString()
 }
