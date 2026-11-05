@@ -44,8 +44,11 @@
    - 1일 함량을 알 수 없는 행 약 1,950건 중 약 940건은 분모가 `/g`인데 섭취방법에 중량이 없다(`1일 2캡슐`). 식약처 다른 API에 1회 중량·내용량 필드가 있는지 조사, 없으면 관리자 검수 대상
    - 정할 것(비교 페이지 때): `UNVERIFIED`·`UNREADABLE`(분모를 하루치로 가정한 값)을 화면에서 "추정"으로 표시할지
    - 검수(`REVIEWED`) 제품은 원문이 같으면 성분 행을 다시 쓰지 않아 섭취방법이 바뀌어도 `daily_amount`가 그대로다. 관리자 검수 흐름을 만들 때 같이 본다
-3. api 공통 응답 형식: 모든 응답을 `ApiResponse`로 감싼다(성공 `data`, 에러 `code`·`message`·`details`). 첫 컨트롤러 PR에서 `@RestControllerAdvice`와 함께 만든다
-   - 정할 것: Spring 내장 에러(검증 실패, 404 등)도 같은 형식으로 바꿀 범위, 에러 코드 이름 규칙
+3. 제품 검색 API(`feat/api-response` 다음, 성분 사전 PR 머지 뒤): `GET /api/products?q=`, 제품명·제조사·성분 검색, 전체 건수(`totalCount`)
+   - 정한 것(2026-11-05): 원료 품목 제외. 최소 2자, 1자는 성분명 정확 일치만(`철`). 성분은 사전(`ingredient_alias`)으로 정확 일치만 찾고 유사도는 제품명·제조사에만. 제품명·제조사 일치를 먼저, 성분만 일치를 뒤에. 응답에 `matchedIngredient`
+   - 길이 실측(원료 제외, 공백 제거): 제품명 3자 미만 0.4%(168개), 제조사 1곳, 대표 성분 215개 중 11개(`아연`·`엽산`·`칼슘`·`철` 등, 연결 성분 행의 18.5%)라 3자 제한은 흔한 검색을 막는다
+   - 검증: `아연`처럼 결과가 1만 건 넘는 검색어로 목록·count 쿼리 `EXPLAIN ANALYZE`. 느리면 GIN(`gin_trgm_ops`) 마이그레이션(V8, 성분 사전 V7 머지 뒤). 2자 검색어는 trigram 인덱스를 못 탄다
+   - 도메인 에러를 던질 컨트롤러가 생기면 `ErrorCode`에 `PRODUCT_NOT_FOUND` 같은 코드와 예외 클래스를 함께 추가한다
 4. 배포 준비: 도메인 확보, SES 샌드박스 해제·소셜 로그인 검수에 걸리는 기간 확인
 5. (3주차 첫 작업) ECR 푸시 → EC2 기본 배포. 배포가 처음 필요한 시점이 3주차 CloudFront라 미룸
    - 정할 것: Dockerfile 방식(Boot `bootBuildImage` vs 직접 작성), OIDC IAM 역할 범위
@@ -62,6 +65,7 @@
 
 ## 완료
 
+- [x] 공통 응답 형식 `ApiResponse`·`GlobalExceptionHandler`, Spring 내장 에러도 같은 형식 (2026-11-05)
 - [x] 1일 함량·단위 통일(`AmountUnit`, `Product.dailyAmount`, V6 `daily_amount`·`daily_unit`), 섭취방법으로 원료 판정, 로컬 재적재로 원료 제외 성분 행 98.8% 계산 확인 (2026-11-04)
 - [x] 섭취방법 파싱과 분모 확인(`IntakeMethodParser`, V5 `basis_check`), I0030 건수 검사 완화(덜 받은 경우만 실패), 로컬에서 실제 API로 46,184건 재판정 확인 (PR #15, 2026-11-04)
 - [x] I0490 회수 수집(`RecallCollectJob`, `RecallSnapshotApplier`, V4 `recall`), 로컬에서 실제 API로 399건 수집 확인 (PR #14, 2026-11-03)
@@ -97,6 +101,14 @@
 - [ ] 상표(KIPRIS)와 도메인 확보
 
 ## 작업 로그
+
+### 2026-11-05
+- 공통 응답 형식 (`feat/api-response`). 성공은 `{"data": ...}`, 실패는 `{"error": {"code", "message", "details"}}`이고 둘 중 하나만 나간다(`ApiResponse`). 컨트롤러가 직접 감싼다. 자동으로 감싸면(`ResponseBodyAdvice`) actuator 응답까지 바뀌어 배포 헬스 체크가 깨질 수 있다.
+  - Spring 내장 에러는 `ResponseEntityExceptionHandler`를 상속해 `handleExceptionInternal` 한 곳에서 본문만 바꾼다. 예외 종류별 HTTP 상태는 Spring이 정한 그대로라, 검증 실패·필수 값 누락·타입 불일치·404·405·415를 하나씩 나열하지 않아도 된다. 상태 → 코드는 404 `NOT_FOUND`, 405 `METHOD_NOT_ALLOWED`, 5xx `INTERNAL_ERROR`, 나머지 4xx `INVALID_INPUT`.
+  - `details`는 어느 입력이 틀렸는지 알 수 있는 예외만 채운다(본문 검증, 파라미터 제약, 필수 값, 타입).
+  - 500은 고정 문구만 내보내고 예외는 로그에 남긴다. 필터에서 난 에러는 advice를 거치지 않아 Boot 기본 `/error` 형식으로 나간다(지금은 필터 없음, 인증 필터를 넣을 때 다시 본다).
+  - 에러 코드 이름: 대문자 스네이크, 공통 코드는 접두어 없음, 도메인 코드는 `PRODUCT_NOT_FOUND`처럼 도메인 접두어. 코드를 던질 곳이 없어 도메인 예외 클래스는 아직 만들지 않았다.
+  - 확인: `GlobalExceptionHandlerTest`(WebMvc 슬라이스, 테스트 전용 컨트롤러) 6개. 로컬 실행에서 없는 경로 404·`POST /actuator/health` 405가 같은 형식이고 `GET /actuator/health`는 기본 형식 그대로인 것을 확인.
 
 ### 2026-11-04
 - 1일 함량과 단위 통일 (`feat/daily-amount`).
