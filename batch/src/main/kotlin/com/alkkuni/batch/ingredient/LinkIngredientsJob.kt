@@ -26,7 +26,7 @@ class LinkIngredientsJob(
         val result = jobLock.withLock(InitialLoadJob.SERVICE) { linker.link() }
         val rate = if (result.targetRows == 0L) 0.0 else result.linkedRows * 100.0 / result.targetRows
         log.info(
-            "성분 연결 완료: 바뀐 행 {}건, IU 1일 함량 재계산 {}건, 원료 제외 성분 행 {}건 중 {}건 연결({}%)",
+            "성분 연결 완료: 바뀐 행 {}건, IU 행 {}건 1일 함량 다시 계산(바뀌지 않은 행 포함), 원료 제외 성분 행 {}건 중 {}건 연결({}%)",
             result.relinkedRows, result.recalculatedIuRows, result.targetRows, result.linkedRows, "%.1f".format(rate),
         )
         log.info("연결 안 된 상위 키(행 수): {}", result.topUnlinked.joinToString { "${it.first}=${it.second}" })

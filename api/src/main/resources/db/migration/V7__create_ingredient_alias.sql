@@ -3,7 +3,8 @@
 -- 사전을 고친 뒤에는 batch의 alkkuni.job=link-ingredients로 기존 성분 행을 다시 연결한다(식약처 API 호출 없음).
 
 -- IU → mg 환산 배율(1mg = iu_per_mg IU). 비타민 D만 넣는다(1μg = 40IU). 비타민 A·E의 IU는 원료 형태에 따라 달라 NULL.
-ALTER TABLE ingredient ADD COLUMN iu_per_mg NUMERIC;
+-- 0이면 IU 환산에서 0으로 나눠 적재·연결 작업이 실패하므로 DB에서 막는다.
+ALTER TABLE ingredient ADD COLUMN iu_per_mg NUMERIC CHECK (iu_per_mg > 0);
 
 -- 영문명: 원문·고시에 영문 정식명이 있는 성분만(없으면 NULL). 표시명: 화면에 보여줄 이름(기본은 name과 같음, 예: "총 HCA (하이드록시시트르산)").
 -- ingredient는 V7 전까지 비어 있어서 NOT NULL을 기본값 없이 추가한다.

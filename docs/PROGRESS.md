@@ -20,18 +20,18 @@
 - [ ] **1단계: 정규화 마무리** ‖ 기본 배포
   - [x] 섭취방법 파싱, 분모 확인 (PR #15)
   - [x] 1일 함량, 단위 통일, 섭취방법으로 원료 판정 (PR #16)
-  - [ ] 성분 사전: 동의어·성분명 정리, `ingredient_id` 연결, IU 성분별 환산 (`feat/ingredient-dictionary` 진행 중)
+  - [ ] 성분 사전: 동의어·성분명 정리, `ingredient_id` 연결, IU 성분별 환산 (`feat/ingredient-dictionary`, PR #18)
     - [x] 작업 순서 문서 (커밋 `62a2f8f`)
     - [x] 성분명 정리 규칙 `IngredientName.normalize` (커밋 `c87556b`)
     - [x] 성분 사전 초안 V7 `ingredient_alias` + 초기 데이터(성분 215개, 키 423개), 검토 표 `docs/ingredient-dictionary.csv`
     - [x] `linkIngredient`, 적재 시 연결, `alkkuni.job=link-ingredients`(DB만 읽는 재연결), 비타민D IU 환산
     - [x] 로컬 연결률 실측 98.6%(목표 90%)
     - [x] 사용자 사전 검토 반영: 대표 이름 한글화, `ingredient.english_name`·`display_name`, `지아잔틴` → 총 지아잔틴(성분 215개, 키 424개). 로컬 V7 재적용·`link-ingredients`·`build --rerun-tasks` 확인
+    - [x] PR #18, `/code-review`(Important 0) 반영: `iu_per_mg > 0` CHECK, IU 재계산 로그 문구
     - [ ] **다음**: 아래 순서
-      1. 커밋 3개 승인(사전 V7·CSV·정리 규칙 / 연결·IU 환산 / 문서) → 커밋 → 푸시 → PR → `/code-review`
-      2. 리뷰 반영 커밋 푸시, CI 확인 → 사용자 diff 정독(위험도 높음: 정규화 사전·Flyway) 후 머지
-      3. PR #17(공통 응답 형식)과 PROGRESS.md 같은 곳을 고쳤다. 먼저 머지된 쪽 다음에 나머지 브랜치에서 충돌 정리
-      4. 머지 뒤 검색 API(`feat/api-search`, "다음 할 일 3")
+      1. CI 확인 → 사용자 diff 정독(위험도 높음: 정규화 사전·Flyway) 후 머지
+      2. PR #17(공통 응답 형식)과 PROGRESS.md 같은 곳을 고쳤다. 먼저 머지된 쪽 다음에 나머지 브랜치에서 충돌 정리
+      3. 머지 뒤 검색 API(`feat/api-search`, "다음 할 일 3")
   - [ ] ‖ 배포 준비(직접): 도메인 확보, SES 프로덕션 액세스 요청, 개인정보처리방침·약관 초안 (`docs/guide/deploy-prep.md`, 로컬 전용)
   - [ ] ‖ 기본 배포: Dockerfile, 운영 compose, `deploy.yml`, EC2에서 `/actuator/health` UP, 메모리 실측
 - [ ] **2단계: 공개 API** ‖ 배포 계속(CloudFront, 도메인 연결)
@@ -61,7 +61,7 @@
    - 합의한 방식: `IngredientName.normalize` 키 → `ingredient_alias`(키 → `ingredient_id`) → `ingredient`(대표 이름). 대표 이름은 식약처 건강기능식품 기준·규격 고시 명칭(출처 확인). 사전 초기 데이터는 Flyway로 넣고, 사용자가 CSV 표로 먼저 검토한 뒤 SQL로 확정한다
    - 연결은 판정 버전(`VERSION`)과 분리한다. 사전을 고칠 때마다 식약처 API로 재적재하면 호출 한도에 걸리므로 `link-ingredients` 작업이 DB만 읽어 다시 연결한다
    - 기준 성분이 다른 것은 합치지 않는다(`진세노사이드 Rg1, Rb1 및 Rg3의 합` ≠ `Rg1과 Rb1의 합`)
-   - 사전 검토 뒤 V7을 고치면(머지 전) 로컬은 `DELETE FROM flyway_schema_history WHERE version = '7'`, `DROP TABLE ingredient_alias`, `ALTER TABLE ingredient DROP COLUMN iu_per_mg, DROP COLUMN english_name, DROP COLUMN display_name`, `UPDATE product_ingredient SET ingredient_id = NULL`, `DELETE FROM ingredient` 후 api를 띄워 V7을 다시 적용하고 `link-ingredients`를 돌린다. 초기화 SQL은 자동 모드 권한에 막혀 사용자가 `!`로 실행한다. 사전·V7은 `data/dict-tools/`(로컬 전용, README에 실행 명령)로 다시 만들고 손으로 고치지 않는다. 머지 뒤 사전 수정은 V8 이후 새 마이그레이션 + `link-ingredients`
+   - 사전 검토 뒤 V7을 고치면(머지 전) 로컬은 `DELETE FROM flyway_schema_history WHERE version = '7'`, `DROP TABLE ingredient_alias`, `ALTER TABLE ingredient DROP COLUMN iu_per_mg, DROP COLUMN english_name, DROP COLUMN display_name`(CHECK 제약은 칼럼과 함께 지워진다), `UPDATE product_ingredient SET ingredient_id = NULL`, `DELETE FROM ingredient` 후 api를 띄워 V7을 다시 적용하고 `link-ingredients`를 돌린다. 초기화 SQL은 자동 모드 권한에 막혀 사용자가 `!`로 실행한다. 사전·V7은 `data/dict-tools/`(로컬 전용, README에 실행 명령)로 다시 만들고 손으로 고치지 않는다. 머지 뒤 사전 수정은 V8 이후 새 마이그레이션 + `link-ingredients`
    - `U`·`FU`(피브린용해효소 약 130행), 비타민A·E의 IU는 여전히 `daily_amount` NULL. `ingredient.iu_per_mg`에 값을 넣으면 `link-ingredients`가 IU 행을 다시 계산한다
    - 연결 안 된 상위 키는 `link-ingredients` 로그에 20개 나온다. 대부분 파서 조각(`최종제품`, `규격`)이나 원료명(`홍삼`, `EPA및DHA함유유지`)이라 사전보다 파서·검수 대상
    - 1일 함량을 알 수 없는 행 약 1,950건 중 약 940건은 분모가 `/g`인데 섭취방법에 중량이 없다(`1일 2캡슐`). 식약처 다른 API에 1회 중량·내용량 필드가 있는지 조사, 없으면 관리자 검수 대상
@@ -138,6 +138,7 @@
   - 사전 검토 반영(`data/dict-tools/review.py`): 대표 이름은 한글명, `한글(English)`의 영문은 영문명 열로 옮김(35개). 약칭은 `한글명(약칭)`(EPA → 에이코사펜타엔산(EPA) 등), 펩타이드 서열은 영문 그대로. `아이소`→`이소`, `-글루코시드`→`-글루코사이드`, 균 개수는 `~ 수`. 표시명은 대표 이름과 같고 HCA만 `총 HCA (하이드록시시트르산)`. '총'은 고시 기준명대로 두고 '총' 없는 표기는 같은 지표로 묶음(HCA와 같게 `지아잔틴`도 총 지아잔틴으로). 표기 확인이 필요한 4개(바릴티로신, 로르산, GABA, 푸닉산)는 이름을 두고 메모만.
   - 영문명·표시명은 CSV에만 두지 않고 V7에서 `ingredient.english_name`(NULL 가능)·`display_name`(NOT NULL)으로 넣음. 영문명 49개.
   - 재실행: 로컬 V7 초기화 → 재적용 → `link-ingredients` 158,187행 갱신, 원료 제외 성분 행 158,085건 중 155,828건(98.6%) 연결. `./gradlew build --rerun-tasks` 성공(core 66, batch 44 중 3 건너뜀, api 4).
+  - `/code-review`(PR #18): Important 0. 반영 2건: `iu_per_mg`가 0이면 IU 환산에서 0으로 나눠 적재·연결 작업이 실패하므로 V7에 `CHECK (iu_per_mg > 0)`. IU 재계산 로그가 바뀐 행이 아니라 IU 행 전체 수라 문구를 그 뜻으로. 넘긴 것: 대괄호 뒤 `(%)`(`[비타민 C](%)`) 정리 순서는 로컬 원문 0건이라 실제 사례가 나오면 테스트와 함께. `display_name` NOT NULL은 V7 전 `ingredient`가 비어 있다는 가정이 깨지면 마이그레이션이 바로 실패하는 쪽을 택함. 1일 함량 계산 중복(적재·재연결)은 비타민 A·E IU 환산을 넣을 때 정리.
   - 테스트: `IngredientLinkerTest` 3개(재연결과 IU 재계산, 두 번 실행, 사전에서 빠진 키), `ProductUpserterTest` 1개(적재 시 연결, 표기 변형 `셀렌(%)` → 셀레늄), `AmountUnitTest` 1개(IU 배율), `IngredientNameTest` 변형 2개.
 
 ### 2026-11-04
