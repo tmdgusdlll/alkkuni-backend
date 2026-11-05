@@ -20,7 +20,18 @@
 - [ ] **1단계: 정규화 마무리** ‖ 기본 배포
   - [x] 섭취방법 파싱, 분모 확인 (PR #15)
   - [x] 1일 함량, 단위 통일, 섭취방법으로 원료 판정 (PR #16)
-  - [ ] 성분 사전: 동의어·성분명 정리, `ingredient_id` 연결, IU 성분별 환산
+  - [ ] 성분 사전: 동의어·성분명 정리, `ingredient_id` 연결, IU 성분별 환산 (`feat/ingredient-dictionary` 진행 중)
+    - [x] 작업 순서 문서 (커밋 `62a2f8f`)
+    - [x] 성분명 정리 규칙 `IngredientName.normalize` (커밋 `c87556b`)
+    - [x] 성분 사전 초안 V7 `ingredient_alias` + 초기 데이터(성분 215개, 키 423개), 검토 표 `docs/ingredient-dictionary.csv`
+    - [x] `linkIngredient`, 적재 시 연결, `alkkuni.job=link-ingredients`(DB만 읽는 재연결), 비타민D IU 환산
+    - [x] 로컬 연결률 실측 98.6%(목표 90%)
+    - [x] 사용자 사전 검토 반영: 대표 이름 한글화, `ingredient.english_name`·`display_name`, `지아잔틴` → 총 지아잔틴(성분 215개, 키 424개). 로컬 V7 재적용·`link-ingredients`·`build --rerun-tasks` 확인
+    - [ ] **다음**: 아래 순서
+      1. 커밋 3개 승인(사전 V7·CSV·정리 규칙 / 연결·IU 환산 / 문서) → 커밋 → 푸시 → PR → `/code-review`
+      2. 리뷰 반영 커밋 푸시, CI 확인 → 사용자 diff 정독(위험도 높음: 정규화 사전·Flyway) 후 머지
+      3. PR #17(공통 응답 형식)과 PROGRESS.md 같은 곳을 고쳤다. 먼저 머지된 쪽 다음에 나머지 브랜치에서 충돌 정리
+      4. 머지 뒤 검색 API(`feat/api-search`, "다음 할 일 3")
   - [ ] ‖ 배포 준비(직접): 도메인 확보, SES 프로덕션 액세스 요청, 개인정보처리방침·약관 초안 (`docs/guide/deploy-prep.md`, 로컬 전용)
   - [ ] ‖ 기본 배포: Dockerfile, 운영 compose, `deploy.yml`, EC2에서 `/actuator/health` UP, 메모리 실측
 - [ ] **2단계: 공개 API** ‖ 배포 계속(CloudFront, 도메인 연결)
@@ -36,7 +47,6 @@
 ## 다음 할 일
 
 1. 수집 배치 공통
-   - `ProductIngredient.ingredientId`는 지금 `protected set`. 정규화 단계에서 `linkIngredient(id)` 같은 메서드로 연다
    - Spring Batch는 쓰지 않는다. 배치 작업은 `alkkuni.job=...`으로 켜는 `ApplicationRunner`(한 번 실행 후 종료)로 만들고, 매일 실행은 EC2 cron이 맡는다. 재시작·청크가 필요해지면 Spring Batch 도입
    - 실행 잠금은 `JobLock`(advisory lock, 출처별 키). 새 배치 작업도 `jobLock.withLock(출처)`로 감싼다
    - 날짜는 주입한 `Clock`(Asia/Seoul)으로 계산한다. `LocalDate.now()`를 직접 쓰지 않는다
@@ -48,8 +58,12 @@
    - 네트워크 오류 재시도는 넣지 않았다. 매일 스케줄이 다음 날 다시 받는다. 초기 적재처럼 길게 도는 작업에서 문제가 되면 추가
    - API 목록에서 사라진 제품 3건이 `parser_version` 1로 남았다(2026-11-04 기준)(삭제 대사는 전체 대사 과제)
 2. 성분 정규화: 1일 함량·단위 통일은 끝남(`daily_amount`). 남은 것은 성분 사전
-   - `ingredient` 사전(동의어: 셀렌=셀레늄, `비타민C 함량(%)` 같은 성분명 정리), `ProductIngredient.linkIngredient(id)`로 `ingredient_id` 채우기
-   - IU·U·FU·`개`·단독 `억` 단위는 `daily_amount`가 NULL. IU→μg은 성분마다 달라(비타민D 1μg = 40IU) 사전에서 성분별 규칙으로 환산
+   - 합의한 방식: `IngredientName.normalize` 키 → `ingredient_alias`(키 → `ingredient_id`) → `ingredient`(대표 이름). 대표 이름은 식약처 건강기능식품 기준·규격 고시 명칭(출처 확인). 사전 초기 데이터는 Flyway로 넣고, 사용자가 CSV 표로 먼저 검토한 뒤 SQL로 확정한다
+   - 연결은 판정 버전(`VERSION`)과 분리한다. 사전을 고칠 때마다 식약처 API로 재적재하면 호출 한도에 걸리므로 `link-ingredients` 작업이 DB만 읽어 다시 연결한다
+   - 기준 성분이 다른 것은 합치지 않는다(`진세노사이드 Rg1, Rb1 및 Rg3의 합` ≠ `Rg1과 Rb1의 합`)
+   - 사전 검토 뒤 V7을 고치면(머지 전) 로컬은 `DELETE FROM flyway_schema_history WHERE version = '7'`, `DROP TABLE ingredient_alias`, `ALTER TABLE ingredient DROP COLUMN iu_per_mg, DROP COLUMN english_name, DROP COLUMN display_name`, `UPDATE product_ingredient SET ingredient_id = NULL`, `DELETE FROM ingredient` 후 api를 띄워 V7을 다시 적용하고 `link-ingredients`를 돌린다. 초기화 SQL은 자동 모드 권한에 막혀 사용자가 `!`로 실행한다. 사전·V7은 `data/dict-tools/`(로컬 전용, README에 실행 명령)로 다시 만들고 손으로 고치지 않는다. 머지 뒤 사전 수정은 V8 이후 새 마이그레이션 + `link-ingredients`
+   - `U`·`FU`(피브린용해효소 약 130행), 비타민A·E의 IU는 여전히 `daily_amount` NULL. `ingredient.iu_per_mg`에 값을 넣으면 `link-ingredients`가 IU 행을 다시 계산한다
+   - 연결 안 된 상위 키는 `link-ingredients` 로그에 20개 나온다. 대부분 파서 조각(`최종제품`, `규격`)이나 원료명(`홍삼`, `EPA및DHA함유유지`)이라 사전보다 파서·검수 대상
    - 1일 함량을 알 수 없는 행 약 1,950건 중 약 940건은 분모가 `/g`인데 섭취방법에 중량이 없다(`1일 2캡슐`). 식약처 다른 API에 1회 중량·내용량 필드가 있는지 조사, 없으면 관리자 검수 대상
    - 정할 것(비교 페이지 때): `UNVERIFIED`·`UNREADABLE`(분모를 하루치로 가정한 값)을 화면에서 "추정"으로 표시할지
    - 검수(`REVIEWED`) 제품은 원문이 같으면 성분 행을 다시 쓰지 않아 섭취방법이 바뀌어도 `daily_amount`가 그대로다. 관리자 검수 흐름을 만들 때 같이 본다
@@ -73,6 +87,7 @@
 
 ## 완료
 
+- [x] 성분 사전 초안(V7, 성분 215개·키 428개)과 연결(적재 시 + `link-ingredients`), 비타민 D IU 환산, 로컬 연결률 98.5% (2026-11-05)
 - [x] 1일 함량·단위 통일(`AmountUnit`, `Product.dailyAmount`, V6 `daily_amount`·`daily_unit`), 섭취방법으로 원료 판정, 로컬 재적재로 원료 제외 성분 행 98.8% 계산 확인 (2026-11-04)
 - [x] 섭취방법 파싱과 분모 확인(`IntakeMethodParser`, V5 `basis_check`), I0030 건수 검사 완화(덜 받은 경우만 실패), 로컬에서 실제 API로 46,184건 재판정 확인 (PR #15, 2026-11-04)
 - [x] I0490 회수 수집(`RecallCollectJob`, `RecallSnapshotApplier`, V4 `recall`), 로컬에서 실제 API로 399건 수집 확인 (PR #14, 2026-11-03)
@@ -109,7 +124,24 @@
 
 ## 작업 로그
 
+### 2026-11-05
+- 성분 사전과 연결 (`feat/ingredient-dictionary`).
+  - 재적재 남은 7,200건 완료: 46,206건 모두 판정 버전 3, 원료 품목 2,805, `NEEDS_REVIEW` 296, 원료 제외 성분 행 1일 함량 계산률 98.8%(156,161 / 158,085).
+  - 정리 규칙에 원 숫자(`㉑ 엽산`)와 `ㆍ` 앞 표시 제거를 더했다(167행). 끝의 `으로서`·`로서`도 지운다(`비타민B6으로서`는 원문 표기로 "B6 환산량"이라는 뜻, 59종 231행). 괄호 안 환산 표시(`실리마린(SILYBIN으로서)`)는 남는다.
+  - 검토 중 바꾼 것: 대표 이름 띄어쓰기 유지(`비타민 D`). 영문 대표 이름 45개를 `한글(영문)`로(원문에 업체 한글 표기가 있는 15개는 그 표기, 30개는 대한화학회 명명법 기준 음역으로 CSV에 "음역(검토 필요)" 표시). 약어·펩타이드 11개(`EPA`, `AKBA`, `Gly-Pro-Hyp` 등)는 그대로. 비타민 D2·D3, K1·K2는 형태 차이라 표시 기준(μg)이 같아 각각 비타민 D·K에 합침.
+  - `비타민B6염산염`·`비타민B1염산염`은 제외로 둠. `…염산염으로서`(환산량)와 맨 이름(염 무게인지 환산량인지 모름, 염 무게면 약 20% 큼)이 정리 규칙으로 같은 키가 되어 합치면 틀린 함량이 나갈 수 있다.
+  - 사전 초안: 원료 제외 성분 행을 키별로 세어 상위부터 대표 성분에 묶었다. 같은 성분의 표기 변형은 행 4개 이상인 키까지 넣었다(진세노사이드 3종 합만 키 30개). 성분 215개, 키 428개. 대표 이름은 영양성분·기능성원료는 고시 명칭으로 적었으나 출처 대조는 못 해 검토 표에 "출처 구분"만 달았다. 개별인정형은 원문 표기.
+  - 합치지 않은 것: 진세노사이드 3종 합 ≠ 2종 합 ≠ Rg1 단독, 프로바이오틱스 수 ≠ 비피더스균 수 ≠ 투입균수 ≠ 열처리배양균체 수, EPA·DHA 합 ≠ EPA·DHA·DPA·ALA 합, 글루코사민 황산염 ≠ 염산염 ≠ 글루코사민, 단백질 ≠ 조단백질. 원료명(`홍삼`, `EPA및DHA함유유지`)·염 형태(`판토텐산칼슘`)·파서 조각은 넣지 않았다.
+  - 연결: 적재(`ProductUpserter`) 때 사전으로 `ingredient_id`를 채우고, `link-ingredients`가 DB의 성분명 종류(4,018)별로 대표 성분을 정해 임시 테이블 + UPDATE 한 번으로 맞춘다. 수집 작업과 같은 잠금(`I0030`).
+  - IU: `ingredient.iu_per_mg`(비타민 D 40,000). `AmountUnit.normalize`는 배율을 받을 때만 IU를 mg으로 바꾸므로 사전 없이 계산하던 값은 그대로라 판정 버전을 올리지 않았다. IU 1일 함량은 연결에 달려 있어 `link-ingredients`가 IU 행(21행)을 다시 계산한다.
+  - 실제 실행(검토 전 초안): V7 적용, `link-ingredients`로 원료 제외 성분 행 158,085건 중 155,772건(98.5%) 연결. `으로서` 규칙과 K2 추가 뒤 계산값 155,823건(98.6%), 로컬 DB에는 아직 미반영. 다시 돌리면 바뀐 행 0건. 비타민 D IU 7행이 mg으로 계산돼 1일 함량 계산 행 156,168건.
+  - 사전 검토 반영(`data/dict-tools/review.py`): 대표 이름은 한글명, `한글(English)`의 영문은 영문명 열로 옮김(35개). 약칭은 `한글명(약칭)`(EPA → 에이코사펜타엔산(EPA) 등), 펩타이드 서열은 영문 그대로. `아이소`→`이소`, `-글루코시드`→`-글루코사이드`, 균 개수는 `~ 수`. 표시명은 대표 이름과 같고 HCA만 `총 HCA (하이드록시시트르산)`. '총'은 고시 기준명대로 두고 '총' 없는 표기는 같은 지표로 묶음(HCA와 같게 `지아잔틴`도 총 지아잔틴으로). 표기 확인이 필요한 4개(바릴티로신, 로르산, GABA, 푸닉산)는 이름을 두고 메모만.
+  - 영문명·표시명은 CSV에만 두지 않고 V7에서 `ingredient.english_name`(NULL 가능)·`display_name`(NOT NULL)으로 넣음. 영문명 49개.
+  - 재실행: 로컬 V7 초기화 → 재적용 → `link-ingredients` 158,187행 갱신, 원료 제외 성분 행 158,085건 중 155,828건(98.6%) 연결. `./gradlew build --rerun-tasks` 성공(core 66, batch 44 중 3 건너뜀, api 4).
+  - 테스트: `IngredientLinkerTest` 3개(재연결과 IU 재계산, 두 번 실행, 사전에서 빠진 키), `ProductUpserterTest` 1개(적재 시 연결, 표기 변형 `셀렌(%)` → 셀레늄), `AmountUnitTest` 1개(IU 배율), `IngredientNameTest` 변형 2개.
+
 ### 2026-11-04
+- 성분명 정리 규칙 (`feat/ingredient-dictionary`). 번호(`14) `), 감싼 `[ ]`, 뒤의 `(%)`·`함량`·`(mg/g)`·`(정제)`, 띄어쓰기, 대소문자를 지운 키로 사전을 찾는다. 원문은 그대로. 같은 규칙을 SQL로 흉내 내 잰 근사치로 성분명 4,018종 → 키 약 1,804종, 상위 200개 키가 원료 제외 성분 행의 약 97.4%(계획 때 원문 기준 예상 91.5%). 사전 200행 정도면 목표 90%를 넘는다.
 - 남은 작업 순서를 5단계로 정함. 처음 사용자 안은 정규화 → API 전부(마이페이지·관리자·검수 포함) → 인증·서랍 → 회수 매칭·알림 → 배포였다.
   - 마이페이지·관리자·검수 API는 회원과 `Member.role`·감사 로그가 있어야 해서 인증 뒤로 옮겼다. 먼저 만들면 권한 체크와 감사 로그를 넣으며 다시 고친다.
   - 배포를 맨 끝에 두면 소셜 연결 해제 웹훅(공개 HTTPS 필요), SES 운영 발송(도메인 인증 필요), 2GB 메모리 실측이 모두 막힌다. 기본 배포(서버 띄우기)는 1단계와 병렬로, 공개 배포는 마지막으로 나눴다. 기본 배포는 코드를 거의 건드리지 않아 병렬에 가장 맞다.
