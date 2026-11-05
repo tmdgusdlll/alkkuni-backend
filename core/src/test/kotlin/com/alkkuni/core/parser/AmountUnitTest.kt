@@ -24,6 +24,18 @@ class AmountUnitTest {
     }
 
     @Test
+    fun `IU는 성분 사전의 배율이 있을 때만 mg으로 바꾼다`() {
+        // 비타민 D: 1μg = 40IU → 1mg = 40,000IU. 실제 표기는 "IU"뿐이지만 점 찍은 변형도 같은 단위다.
+        for (unit in listOf("IU", "iu", "I.U.", " IU ")) {
+            assertEquals(BigDecimal("0.01") to "mg", AmountUnit.normalize(BigDecimal("400"), unit, BigDecimal("40000")), unit)
+        }
+        // 배율을 모르는 성분(비타민 A·E 등)은 계산하지 않는다
+        assertNull(AmountUnit.normalize(BigDecimal("400"), "IU"))
+        // U·FU는 IU가 아니다
+        assertNull(AmountUnit.normalize(BigDecimal("400"), "FU", BigDecimal("40000")))
+    }
+
+    @Test
     fun `균수는 억과 10의 거듭제곱을 곱해 개수로 바꾼다`() {
         assertNormalized("100000000", "CFU", "100000000", "CFU")
         assertNormalized("100000000", "CFU", "100000000", "cfu")

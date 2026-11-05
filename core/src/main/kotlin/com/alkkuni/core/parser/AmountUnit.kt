@@ -1,10 +1,12 @@
 package com.alkkuni.core.parser
 
 import java.math.BigDecimal
+import java.math.MathContext
 
 // 함량 단위 표기(261종)를 비교할 수 있는 단위로 모은다.
 // 질량은 mg, 비타민 환산 단위는 "mg α-TE"처럼 mg + 환산 기준, 균수는 억·10^n을 곱한 CFU(사균은 cells).
-// IU·U·FU·개는 성분마다 환산이 달라 null이다(성분 사전 단계). 규칙을 바꾸면 IngredientAmountParser.VERSION을 올린다.
+// IU는 성분마다 환산이 달라 사전의 배율(iuPerMg)을 받았을 때만 mg으로 바꾼다. U·FU·개는 null.
+// 규칙을 바꾸면 IngredientAmountParser.VERSION을 올린다(IU 환산은 사전 연결이라 link-ingredients가 다시 계산한다).
 object AmountUnit {
 
     private val mass = Regex("""^(kg|mg|㎎|μg|µg|㎍|ug|mcg|g)(.*)$""")
@@ -24,9 +26,14 @@ object AmountUnit {
     private val count = Regex("""^(?:(억)|[x×*]\s*10\s*\^\s*(\d+))?\s*(cfu|c\.f\.u\.?|cells)$""", RegexOption.IGNORE_CASE)
     private val hundredMillion = BigDecimal("100000000")
 
-    // 비교할 단위로 바꾼 값과 단위. 모르는 단위면 null.
-    fun normalize(value: BigDecimal, unit: String): Pair<BigDecimal, String>? {
+    private val iu = Regex("""^i\.?u\.?$""", RegexOption.IGNORE_CASE)
+
+    fun isIu(unit: String) = iu.matches(unit.trim())
+
+    // 비교할 단위로 바꾼 값과 단위. 모르는 단위면 null. iuPerMg는 성분 사전의 IU 환산 배율(1mg = iuPerMg IU).
+    fun normalize(value: BigDecimal, unit: String, iuPerMg: BigDecimal? = null): Pair<BigDecimal, String>? {
         val u = unit.trim()
+        if (isIu(u)) return iuPerMg?.let { value.divide(it, MathContext.DECIMAL64) to "mg" }
         count.find(u)?.let { m ->
             val multiplier = when {
                 m.groupValues[1].isNotEmpty() -> hundredMillion

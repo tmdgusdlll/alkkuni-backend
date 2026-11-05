@@ -1,5 +1,6 @@
 package com.alkkuni.core.product.entity
 
+import com.alkkuni.core.parser.ParsedAmount
 import com.alkkuni.core.product.enums.ExtractionMethod
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
@@ -70,4 +71,18 @@ class ProductIngredient(
 
     var dailyUnit: String? = dailyUnit
         protected set
+
+    // 성분 사전(ingredient_alias)으로 찾은 대표 성분. 사전에 없으면 null.
+    fun linkIngredient(ingredientId: Long?) {
+        this.ingredientId = ingredientId
+    }
+
+    // 사전이 바뀌어 IU 환산이 달라졌을 때 link-ingredients가 다시 계산한 값으로 바꾼다.
+    fun updateDailyAmount(daily: Pair<BigDecimal, String>?) {
+        dailyAmount = daily?.first
+        dailyUnit = daily?.second
+    }
+
+    // 원문 함량. 1일 함량을 다시 계산할 때 Product.dailyAmount에 넘긴다.
+    fun toParsedAmount() = ParsedAmount(rawName, amount, unit, basisAmount, basisUnit)
 }
