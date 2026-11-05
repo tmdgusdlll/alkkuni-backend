@@ -1,5 +1,6 @@
 package com.alkkuni.batch.product
 
+import com.alkkuni.batch.ingredient.IngredientDictionary
 import com.alkkuni.core.parser.IngredientAmountParser
 import com.alkkuni.core.product.entity.Product
 import com.alkkuni.core.product.entity.ProductIngredient
@@ -19,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional
 class ProductUpserter(
     private val productRepository: ProductRepository,
     private val productIngredientRepository: ProductIngredientRepository,
+    private val dictionary: IngredientDictionary,
 ) {
     /** 한 페이지를 한 트랜잭션으로 저장한다. 바뀌어서 다시 쓴 제품 수를 돌려준다. */
     @Transactional
@@ -56,7 +58,8 @@ class ProductUpserter(
                 if (found != null) productIngredientRepository.deleteAllByProductId(productId)
                 productIngredientRepository.saveAll(
                     result.amounts.map {
-                        val daily = product.dailyAmount(it)
+                        val ingredient = dictionary.find(it.rawName)
+                        val daily = product.dailyAmount(it, ingredient?.iuPerMg)
                         ProductIngredient(
                             productId = productId,
                             rawName = it.rawName,
@@ -68,7 +71,7 @@ class ProductUpserter(
                             parserVersion = IngredientAmountParser.VERSION,
                             dailyAmount = daily?.first,
                             dailyUnit = daily?.second,
-                        )
+                        ).apply { linkIngredient(ingredient?.id) }
                     },
                 )
             }

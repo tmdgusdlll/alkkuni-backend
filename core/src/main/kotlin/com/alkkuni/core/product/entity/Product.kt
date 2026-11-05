@@ -190,11 +190,12 @@ class Product(
      * - 비교할 수 있으면: 분모가 하루치면 그대로, 1회분이면 × 1일 횟수, "/g" 같은 단위당 농도면 × 하루 섭취 중량. 어느 것도 아니면 원문 오류일 수 있어 null.
      * - 비교할 수 없으면(1회 중량 없음, 무게·부피 섞임, 섭취방법 못 읽음): 전체 중량 분모는 하루치로 가정한다
      *   (확인된 제품의 94%가 하루치, 추정 여부는 basisCheck로 구분). 단위당 분모는 하루에 몇 g 먹는지 몰라 null.
+     * - iuPerMg: 연결된 성분의 IU 환산 배율(Ingredient.iuPerMg). 없으면 IU 함량은 null.
      */
-    fun dailyAmount(parsed: ParsedAmount): Pair<BigDecimal, String>? {
+    fun dailyAmount(parsed: ParsedAmount, iuPerMg: BigDecimal? = null): Pair<BigDecimal, String>? {
         // 원료는 하루 섭취량이 없다. 비교 대상도 아니다.
         if (rawMaterial) return null
-        val (amount, unit) = AmountUnit.normalize(parsed.amount, parsed.unit) ?: return null
+        val (amount, unit) = AmountUnit.normalize(parsed.amount, parsed.unit, iuPerMg) ?: return null
         // "4mg/g"처럼 분모에 숫자가 없으면 파서가 1을 넣는다. g·ml당 농도다.
         // "/1.000mg"(1,000mg의 오기)이 1mg으로 읽혀 1mg당 농도로 보면 1000배가 되므로 mg 분모는 농도로 보지 않는다.
         val perUnit = parsed.basisAmount.compareTo(BigDecimal.ONE) == 0 && parsed.basisUnit.lowercase() in PER_UNIT_BASIS

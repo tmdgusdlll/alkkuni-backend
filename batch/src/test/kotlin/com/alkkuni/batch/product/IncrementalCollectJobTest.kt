@@ -1,5 +1,6 @@
 package com.alkkuni.batch.product
 
+import com.alkkuni.batch.ingredient.IngredientDictionary
 import com.alkkuni.batch.foodsafety.FoodSafetyClient
 import com.alkkuni.batch.noLock
 import com.alkkuni.batch.raw.RawStore
@@ -43,6 +44,7 @@ class IncrementalCollectJobTest {
     private val upserter = object : ProductUpserter(
         mock(ProductRepository::class.java),
         mock(ProductIngredientRepository::class.java),
+        mock(IngredientDictionary::class.java),
     ) {
         override fun upsert(rows: List<I0030Row>): Int = rows.size.also { rows.mapTo(received) { it.reportNo } }
     }

@@ -118,6 +118,20 @@ class ProductUpserterTest(
         assertEquals(1 to 2, counts())
     }
 
+    // 사전은 V7 초기 데이터다. 성분명 표기 변형도 정리 규칙(IngredientName)을 거쳐 같은 대표 성분으로 연결된다.
+    @Test
+    fun `적재할 때 성분 사전으로 대표 성분을 연결한다`() {
+        upserter.upsert(listOf(row("A", VITAMIN + "\n4.셀렌(%) : 표시량(30㎍/2g)의 80~150%\n5.없는성분 : 표시량(1mg/2g)의 80~120%")))
+
+        val linked = jdbc.query(
+            "SELECT pi.raw_name, i.name FROM product_ingredient pi LEFT JOIN ingredient i ON i.id = pi.ingredient_id ORDER BY pi.id",
+        ) { rs, _ -> rs.getString(1) to rs.getString(2) }
+        assertEquals(
+            listOf("감마리놀렌산" to "감마리놀렌산", "비타민E" to "비타민 E", "셀렌(%)" to "셀레늄", "없는성분" to null),
+            linked,
+        )
+    }
+
     private fun counts() =
         jdbc.queryForObject("SELECT count(*) FROM product", Int::class.java)!! to
             jdbc.queryForObject("SELECT count(*) FROM product_ingredient", Int::class.java)!!

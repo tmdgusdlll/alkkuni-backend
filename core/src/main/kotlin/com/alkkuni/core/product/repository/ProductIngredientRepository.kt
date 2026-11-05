@@ -10,4 +10,7 @@ interface ProductIngredientRepository : JpaRepository<ProductIngredient, Long> {
     @Modifying
     @Query("delete from ProductIngredient pi where pi.productId = :productId")
     fun deleteAllByProductId(productId: Long): Int
+
+    // link-ingredients가 IU 행의 1일 함량을 다시 계산할 때 쓴다(로컬 21행).
+    fun findAllByUnitIn(units: Collection<String>): List<ProductIngredient>
 }
