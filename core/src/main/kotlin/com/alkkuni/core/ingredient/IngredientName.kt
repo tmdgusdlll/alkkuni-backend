@@ -5,10 +5,11 @@ package com.alkkuni.core.ingredient
 // 동의어("셀렌"="셀레늄")는 여기서 합치지 않고 사전(ingredient_alias)이 묶는다.
 object IngredientName {
 
-    // "14) ", "1-2) ", "1-14) ", ". "
-    private val leadingNumber = Regex("""^\s*(?:\d+(?:-\d+)?\s*\)|\.)\s*""")
-    // 뒤에 붙은 표시: "(%)", " 함량", "(mg/g)", "(정제)". 함량(%)처럼 겹쳐도 반복해서 지운다.
-    private val trailing = Regex("""\s*(?:\(\s*%\s*\)|함량|\(\s*mg\s*/\s*g\s*\)|\(\s*정제\s*\))\s*$""")
+    // "14) ", "1-2) ", "1-14) ", ". ", "㉑ ", "ㆍ"
+    private val leadingNumber = Regex("""^\s*(?:\d+(?:-\d+)?\s*\)|[.ㆍ]|[①-⑳㉑-㉟㊱-㊿])\s*""")
+    // 뒤에 붙은 표시: "(%)", " 함량", "(mg/g)", "(정제)", "으로서"·"로서". 함량(%)·함량으로서처럼 겹쳐도 반복해서 지운다.
+    // "비타민B6으로서"는 "비타민 B6으로 환산한 양"이라 같은 성분이다. 괄호 안 환산 표시("실리마린(SILYBIN으로서)")는 ")"로 끝나 남는다.
+    private val trailing = Regex("""\s*(?:\(\s*%\s*\)|함량|\(\s*mg\s*/\s*g\s*\)|\(\s*정제\s*\)|으로서|로서)\s*$""")
     private val wrapped = Regex("""^\[(.*)]$""")
     private val spaces = Regex("""\s+""")
 
