@@ -33,13 +33,23 @@ class GlobalExceptionHandlerTest(@Autowired private val mvc: MockMvc) {
             ApiResponse.ok(q)
 
         @PostMapping("/test/body")
-        fun body(@Valid @RequestBody body: Body) = ApiResponse.ok(body.name)
+        fun body(@Valid @RequestBody body: Body) = ApiResponse.ok(body.name ?: "")
+
+        // 다른 파라미터에 제약이 있으면 Spring이 메서드 검증으로 본문 오류까지 한꺼번에 던진다
+        @PostMapping("/test/body-and-param")
+        fun bodyAndParam(@RequestParam @Size(min = 2) q: String, @Valid @RequestBody body: Body) = ApiResponse.ok(q)
+
+        // Kotlin 관례대로 null 아닌 타입. 필드가 빠지면 검증 전에 Jackson이 실패한다
+        @PostMapping("/test/non-null")
+        fun nonNull(@RequestBody body: NonNullBody) = ApiResponse.ok(body.name)
 
         @GetMapping("/test/boom")
         fun boom(): ApiResponse<String> = throw IllegalStateException("DB 비밀번호가 틀림")
     }
 
     data class Body(@field:NotBlank(message = "필수 값입니다.") val name: String?)
+
+    data class NonNullBody(val name: String, val count: Int)
 
     @Test
     fun `성공은 data만 담는다`() {
@@ -83,6 +93,36 @@ class GlobalExceptionHandlerTest(@Autowired private val mvc: MockMvc) {
             status { isBadRequest() }
             jsonPath("$.error.details[0].field") { value("name") }
             jsonPath("$.error.details[0].reason") { value("필수 값입니다.") }
+        }
+    }
+
+    @Test
+    fun `파라미터 제약과 본문 검증이 함께 실패해도 본문 오류는 필드 경로로 알려준다`() {
+        mvc.post("/test/body-and-param") {
+            param("q", "루테인")
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"name": " "}"""
+        }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.error.details[0].field") { value("name") }
+        }
+    }
+
+    @Test
+    fun `null 아닌 필드가 빠진 JSON은 어느 필드인지 알려준다`() {
+        mvc.post("/test/non-null") {
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"count": 1}"""
+        }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.error.code") { value("INVALID_INPUT") }
+            jsonPath("$.error.details[0].field") { value("name") }
+        }
+        mvc.post("/test/non-null") {
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"name": "a", "count": "많이"}"""
+        }.andExpect {
+            jsonPath("$.error.details[0].field") { value("count") }
         }
     }
 

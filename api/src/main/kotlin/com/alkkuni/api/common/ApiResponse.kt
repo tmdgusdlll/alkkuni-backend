@@ -13,7 +13,8 @@ data class ApiResponse<T>(
     val error: ErrorBody? = null,
 ) {
     companion object {
-        fun <T> ok(data: T) = ApiResponse(data = data)
+        // data가 null이면 {}가 되어 data·error 중 하나가 반드시 있다는 약속이 깨진다. 없음은 404 등 에러로 보낸다.
+        fun <T : Any> ok(data: T) = ApiResponse(data = data)
 
         fun error(code: ErrorCode, details: List<ErrorDetail>? = null) =
             ApiResponse<Nothing>(error = ErrorBody(code.name, code.message, details))

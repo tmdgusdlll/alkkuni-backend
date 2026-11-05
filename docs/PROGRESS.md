@@ -49,6 +49,7 @@
    - 길이 실측(원료 제외, 공백 제거): 제품명 3자 미만 0.4%(168개), 제조사 1곳, 대표 성분 215개 중 11개(`아연`·`엽산`·`칼슘`·`철` 등, 연결 성분 행의 18.5%)라 3자 제한은 흔한 검색을 막는다
    - 검증: `아연`처럼 결과가 1만 건 넘는 검색어로 목록·count 쿼리 `EXPLAIN ANALYZE`. 느리면 GIN(`gin_trgm_ops`) 마이그레이션(V8, 성분 사전 V7 머지 뒤). 2자 검색어는 trigram 인덱스를 못 탄다
    - 도메인 에러를 던질 컨트롤러가 생기면 `ErrorCode`에 `PRODUCT_NOT_FOUND` 같은 코드와 예외 클래스를 함께 추가한다
+   - 인증(3단계) 때 `GlobalExceptionHandler`에서 볼 것(PR #17 리뷰): `@ExceptionHandler(Exception)`이 `AccessDeniedException`·`@ResponseStatus` 예외까지 500으로 바꾼다. 401·403은 지금 `INVALID_INPUT`으로 나가므로 `UNAUTHORIZED`·`FORBIDDEN` 코드를 프론트 연동 전에 추가한다. 500 로그의 예외 메시지에 이메일이 들어갈 수 있다(UNIQUE 위반 `Key (email)=(...)`). 회원 테이블이 생기면 로그 마스킹 또는 해당 예외 별도 처리
 4. 배포 준비: 도메인 확보, SES 샌드박스 해제·소셜 로그인 검수에 걸리는 기간 확인
 5. (3주차 첫 작업) ECR 푸시 → EC2 기본 배포. 배포가 처음 필요한 시점이 3주차 CloudFront라 미룸
    - 정할 것: Dockerfile 방식(Boot `bootBuildImage` vs 직접 작성), OIDC IAM 역할 범위
@@ -65,7 +66,7 @@
 
 ## 완료
 
-- [x] 공통 응답 형식 `ApiResponse`·`GlobalExceptionHandler`, Spring 내장 에러도 같은 형식 (2026-11-05)
+- [x] 공통 응답 형식 `ApiResponse`·`GlobalExceptionHandler`, Spring 내장 에러도 같은 형식 (PR #17, 2026-11-05)
 - [x] 1일 함량·단위 통일(`AmountUnit`, `Product.dailyAmount`, V6 `daily_amount`·`daily_unit`), 섭취방법으로 원료 판정, 로컬 재적재로 원료 제외 성분 행 98.8% 계산 확인 (2026-11-04)
 - [x] 섭취방법 파싱과 분모 확인(`IntakeMethodParser`, V5 `basis_check`), I0030 건수 검사 완화(덜 받은 경우만 실패), 로컬에서 실제 API로 46,184건 재판정 확인 (PR #15, 2026-11-04)
 - [x] I0490 회수 수집(`RecallCollectJob`, `RecallSnapshotApplier`, V4 `recall`), 로컬에서 실제 API로 399건 수집 확인 (PR #14, 2026-11-03)
@@ -108,7 +109,8 @@
   - `details`는 어느 입력이 틀렸는지 알 수 있는 예외만 채운다(본문 검증, 파라미터 제약, 필수 값, 타입).
   - 500은 고정 문구만 내보내고 예외는 로그에 남긴다. 필터에서 난 에러는 advice를 거치지 않아 Boot 기본 `/error` 형식으로 나간다(지금은 필터 없음, 인증 필터를 넣을 때 다시 본다).
   - 에러 코드 이름: 대문자 스네이크, 공통 코드는 접두어 없음, 도메인 코드는 `PRODUCT_NOT_FOUND`처럼 도메인 접두어. 코드를 던질 곳이 없어 도메인 예외 클래스는 아직 만들지 않았다.
-  - 확인: `GlobalExceptionHandlerTest`(WebMvc 슬라이스, 테스트 전용 컨트롤러) 6개. 로컬 실행에서 없는 경로 404·`POST /actuator/health` 405가 같은 형식이고 `GET /actuator/health`는 기본 형식 그대로인 것을 확인.
+  - `/code-review`(high) 10건 중 5건 반영 (PR #17): `handleExceptionInternal`이 부모를 부르지 않아 이미 나간 응답에 다시 쓰고 500 지표의 exception 태그가 비던 것, 본문·파라미터 검증이 함께 실패하면 본문 오류가 파라미터 이름으로 나가던 것, 클래스 단위 검증 오류가 `details`에서 빠지던 것, `ok(null)`이 `{}`가 되던 것(`T : Any`로 막음), null 아닌 Kotlin 필드가 빠진 JSON에 `details`가 없던 것(Jackson 경로 사용). 인증 관련 3건(`AccessDeniedException`이 500, 401·403 코드, 로그 속 이메일)은 회원·보안이 없어 지금 깨지는 경로가 없어 3단계로 미룸. JSON이 아닌 `Accept` 요청은 JSON API만 있어 넘김.
+  - 확인: `GlobalExceptionHandlerTest`(WebMvc 슬라이스, 테스트 전용 컨트롤러) 8개. 로컬 실행에서 없는 경로 404·`POST /actuator/health` 405가 같은 형식이고 `GET /actuator/health`는 기본 형식 그대로인 것을 확인.
 
 ### 2026-11-04
 - 1일 함량과 단위 통일 (`feat/daily-amount`).
