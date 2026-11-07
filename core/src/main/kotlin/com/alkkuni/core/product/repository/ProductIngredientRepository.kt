@@ -16,4 +16,7 @@ interface ProductIngredientRepository : JpaRepository<ProductIngredient, Long> {
 
     // 제품 비교가 2~3개 제품의 성분 행을 한 번에 읽는다. id 순서는 원문 성분표 순서다.
     fun findAllByProductIdInOrderById(productIds: Collection<Long>): List<ProductIngredient>
+
+    // 제품 상세가 한 제품의 성분표를 원문 순서로 읽는다.
+    fun findAllByProductIdOrderById(productId: Long): List<ProductIngredient>
 }

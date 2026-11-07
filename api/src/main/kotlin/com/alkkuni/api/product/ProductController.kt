@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Size
 import org.springframework.http.CacheControl
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
@@ -18,6 +19,7 @@ import java.time.Duration
 class ProductController(
     private val searchService: ProductSearchService,
     private val compareService: ProductCompareService,
+    private val detailService: ProductDetailService,
 ) {
 
     // 공개 조회라 성공 응답만 60초 캐시한다(PLANNING.md "캐시"). 에러 응답은 GlobalExceptionHandler가 만들어 헤더가 붙지 않는다.
@@ -38,6 +40,13 @@ class ProductController(
         ResponseEntity.ok()
             .cacheControl(PUBLIC_CACHE)
             .body(ApiResponse.ok(compareService.compare(ids)))
+
+    // 숫자가 아닌 id는 타입 변환 실패로 400이 된다. /compare는 리터럴 경로라 이 매핑보다 먼저 잡힌다.
+    @GetMapping("/{id}")
+    fun detail(@PathVariable id: Long): ResponseEntity<ApiResponse<ProductDetailResponse>> =
+        ResponseEntity.ok()
+            .cacheControl(PUBLIC_CACHE)
+            .body(ApiResponse.ok(detailService.detail(id)))
 
     companion object {
         // ponytail: OFFSET 페이지네이션. 깊은 페이지는 앞 행을 모두 읽으므로 상한을 둔다. 무한 스크롤이 필요해지면 키셋으로 바꾼다.
