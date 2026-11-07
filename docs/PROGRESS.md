@@ -21,12 +21,12 @@
   - [x] 섭취방법 파싱, 분모 확인 (PR #15)
   - [x] 1일 함량, 단위 통일, 섭취방법으로 원료 판정 (PR #16)
   - [x] 성분 사전: 동의어·성분명 정리, `ingredient_id` 연결, IU 성분별 환산 (PR #18)
-  - [x] 화면·필터·정렬 결정을 PLANNING.md "검색·목록·비교 화면"에 기록 (`chore/plan-explore-compare`)
+  - [x] 화면·필터·정렬 결정을 PLANNING.md "검색·목록·비교 화면"에 기록 (PR #19에 포함)
   - [ ] ‖ 배포 준비(직접): ~~도메인 확보~~(`kuromi.click`), SES 프로덕션 액세스 요청, 개인정보처리방침·약관 초안 (`docs/guide/deploy-prep.md`, 로컬 전용)
   - [ ] ‖ 기본 배포: Dockerfile, 운영 compose, `deploy.yml`, EC2에서 `/actuator/health` UP, 메모리 실측
 - [ ] **2단계: 공개 API** ‖ 배포 계속(CloudFront, 도메인 연결)
   - [x] `ApiResponse`·`@RestControllerAdvice` (PR #17)
-  - [x] 수집 칼럼 추가(제형, 신고일, 기능성 원료, 기능성 원문, 주의사항) + 재적재 (`feat/collect-columns`)
+  - [x] 수집 칼럼 추가(제형, 신고일, 기능성 원료, 기능성 원문, 주의사항) + 재적재 (PR #19)
   - [ ] **다음**: 검색 API(정렬만) → 제품 비교 API(같은 성분 여러 행 규칙 먼저) → 제품 상세
   - [ ] 브랜드 사전 → 1일 기준값 → 성분별 제품 목록 API(JDSL, 필터) → 기능성 카테고리 사전
 - [ ] **3단계: 인증 + 서랍** ‖ 회수 매칭(batch)
@@ -59,7 +59,7 @@
    - `U`·`FU`(피브린용해효소 약 130행), 비타민A·E의 IU는 여전히 `daily_amount` NULL. `ingredient.iu_per_mg`에 값을 넣으면 `link-ingredients`가 IU 행을 다시 계산한다
    - 연결 안 된 상위 키는 `link-ingredients` 로그에 20개 나온다. 대부분 파서 조각(`최종제품`, `규격`)이나 원료명(`홍삼`, `EPA및DHA함유유지`)이라 사전보다 파서·검수 대상
    - 1일 함량을 알 수 없는 행 약 1,950건 중 약 940건은 분모가 `/g`인데 섭취방법에 중량이 없다(`1일 2캡슐`). 식약처 다른 API에 1회 중량·내용량 필드가 있는지 조사, 없으면 관리자 검수 대상
-   - 정함(2026-11-05): `UNVERIFIED`·`UNREADABLE`(분모를 하루치로 가정한 값)은 화면에서 "추정"으로 표시한다. 추정 비율(원료 제외 제품의 77%)을 줄이는 개선은 따로 시간을 들여 한다
+   - 정함(2026-11-06, 11-05 "추정" 표시를 바꿈): `UNVERIFIED`·`UNREADABLE`(분모를 확인하지 못한 값)은 "표시 기준량" 배지를 단다. 추정 비율(원료 제외 제품의 77%)을 줄이는 개선은 따로 시간을 들여 한다
    - 검수(`REVIEWED`) 제품은 원문이 같으면 성분 행을 다시 쓰지 않아 섭취방법이 바뀌어도 `daily_amount`가 그대로다. 관리자 검수 흐름을 만들 때 같이 본다
 3. 제품 검색 API: `GET /api/products?q=&sort=`, 제품명·제조사·성분 검색, 전체 건수(`totalCount`). 화면 전체 결정은 PLANNING.md "검색·목록·비교 화면"
    - 정렬만 둔다: 관련도순, 최신 신고순(`product.reported_on`. `source_updated_at`은 수정일), 성분 함량 높은순(검색어가 성분일 때만)
@@ -90,7 +90,7 @@
 
 ## 완료
 
-- [x] 수집 칼럼 추가(V8 `form`·`reported_on`·`functional_materials`·`functionality`·`precautions`), 로컬 재적재로 46,249건 갱신 확인 (2026-11-07)
+- [x] 수집 칼럼 추가(V8 `form`·`reported_on`·`functional_materials`·`functionality`·`precautions`), 로컬 재적재로 46,249건 갱신 확인 (PR #19, 2026-11-07)
 - [x] 성분 사전(V7, 성분 215개·키 424개, 영문명·표시명)과 연결(적재 시 + `link-ingredients`), 비타민 D IU 환산, 로컬 연결률 98.6% (PR #18, 2026-11-05)
 - [x] 공통 응답 형식 `ApiResponse`·`GlobalExceptionHandler`, Spring 내장 에러도 같은 형식 (PR #17, 2026-11-05)
 - [x] 1일 함량·단위 통일(`AmountUnit`, `Product.dailyAmount`, V6 `daily_amount`·`daily_unit`), 섭취방법으로 원료 판정, 로컬 재적재로 원료 제외 성분 행 98.8% 계산 확인 (2026-11-04)
@@ -131,12 +131,13 @@
 ## 작업 로그
 
 ### 2026-11-07
-- 수집 칼럼 추가 (`feat/collect-columns`). I0030의 제형(`PRDT_SHAP_CD_NM`), 신고일(`PRMS_DT`), 기능성 원료(`INDIV_RAWMTRL_NM`), 기능성 원문(`PRIMARY_FNCLTY`), 주의사항(`IFTKN_ATNT_MATR_CN`)을 `product`에 원문 그대로 저장한다.
+- 수집 칼럼 추가 (`feat/collect-columns`, PR #19). I0030의 제형(`PRDT_SHAP_CD_NM`), 신고일(`PRMS_DT`), 기능성 원료(`INDIV_RAWMTRL_NM`), 기능성 원문(`PRIMARY_FNCLTY`), 주의사항(`IFTKN_ATNT_MATR_CN`)을 `product`에 원문 그대로 저장한다.
   - 주의사항은 처음 계획에 없었다. MVP 제품 상세에 들어가는데 지금 빼면 상세 API 때 47페이지를 다시 받아야 해서 같이 넣었다.
   - 기능성 원료는 목록이지만 텍스트 칼럼 하나로 둔다. 별도 테이블은 단일/복합 원료 필터를 만들 때 정한다.
   - 다섯 값을 `sourceHash`에 넣었다. 그래서 이번 재적재가 모든 제품을 다시 쓴다. 판정 버전(`VERSION`)은 올리지 않았다.
   - 로컬 재적재: 46,249건, 신고일 빈 값 0(사라진 제품 6건 제외), 제형 14종(정 14,031·캡슐 12,619·분말 10,230 순, 빈 값 3), 주의사항 빈 값 1,669. 성분 연결률 98.6%·1일 함량 98.8%로 그대로.
   - 첫 재적재는 3페이지에서 연결이 끊겨 실패했다. 재시도는 아직 넣지 않았다.
+  - `/code-review`(high) (PR #19): Important 1(문서의 "추정" 표시가 11-06 결정과 엇갈림, 고침). 반영: `I0030Row.from` 매핑 테스트, 새 필드 기본값 제거(매핑 누락을 컴파일이 막게). 넘긴 것: `PRMS_DT` 형식 오류 시 수집이 멈춤(`LAST_UPDT_DTM`과 같은 방침, 전체 데이터 8자리), 이미 적재된 DB는 새 칼럼이 비어 있음(운영 첫 적재는 머지 뒤), 새 제품 생성 시 생성자·`updateSource` 이중 대입(생성자 시그니처 변경이 필요해 범위 밖).
 
 ### 2026-11-06
 - 배포 준비 외부 작업(사용자 직접). 운영 도메인은 `kuromi.click`. SES 샌드박스 해제, 네이버 검수, 구글 브랜드 인증·게시는 아직이다. 네이버·구글은 서비스 페이지와 로그인이 있어야 신청할 수 있어 3단계 뒤로 둔다. 세부는 노션 "출시 준비 체크리스트".

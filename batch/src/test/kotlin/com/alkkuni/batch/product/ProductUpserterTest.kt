@@ -151,7 +151,7 @@ class ProductUpserterTest(
         jdbc.queryForObject("SELECT count(*) FROM product", Int::class.java)!! to
             jdbc.queryForObject("SELECT count(*) FROM product_ingredient", Int::class.java)!!
 
-    private fun row(reportNo: String, standardText: String, name: String = "제품", form: String? = null) = I0030Row(
+    private fun row(reportNo: String, standardText: String, name: String = "제품", form: String? = "캡슐") = I0030Row(
         reportNo = reportNo,
         name = name,
         manufacturer = "제조사",

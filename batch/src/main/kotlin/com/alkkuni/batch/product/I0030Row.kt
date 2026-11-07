@@ -18,11 +18,11 @@ data class I0030Row(
     val intakeMethod: String?,
     val standardText: String?,
     val sourceUpdatedAt: LocalDateTime?,
-    val form: String? = null,
-    val reportedOn: LocalDate? = null,
-    val functionalMaterials: String? = null,
-    val functionality: String? = null,
-    val precautions: String? = null,
+    val form: String?,
+    val reportedOn: LocalDate?,
+    val functionalMaterials: String?,
+    val functionality: String?,
+    val precautions: String?,
 ) {
     // 적재에 쓰는 값이 하나라도 바뀌면 달라진다. 같으면 upsert가 그 행을 건너뛴다.
     // 원본 JSON 전체가 아니라 쓰는 값만 넣어 파일 방식(CSV)과도 같은 값이 나오게 한다.
