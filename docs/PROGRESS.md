@@ -65,7 +65,8 @@
    - 검수(`REVIEWED`) 제품은 원문이 같으면 성분 행을 다시 쓰지 않아 섭취방법이 바뀌어도 `daily_amount`가 그대로다. 관리자 검수 흐름을 만들 때 같이 본다
 3. 공개 API 공통
    - 검색 API에서 확인한 것(2026-11-07): 함량순·`dailyAmount`는 같은 제품의 같은 성분 행 중 가장 큰 값 하나를 쓴다(비교 API에서 합산 규칙을 정하면 검색도 맞춘다). 한 성분 안에서도 단위가 섞여 있다(엽산 `mg DFE` 2,792행·`mg` 1,700행, 비타민 A `mg RAE`·`mg RE`·`mg`). 함량순은 단위를 보지 않고 숫자로만 정렬하므로 성분별 목록 API 전에 환산 또는 단위별 분리를 정한다
-   - `아연` 함량순 1위가 `원기정 셀렌효모` 90mg이다(상한 35mg). 함량순 상위 의심 값 검수는 관리자 검수 흐름에서 본다
+   - `아연` 함량순 1위가 `원기정 셀렌효모` 90mg이다(상한 35mg). 함량순 상위 의심 값 검수는 관리자 검수 흐름에서 본다. 검색 응답에 `basisCheck`·`parseStatus`를 내보내 화면이 "표시 기준량" 배지와 검수 대기 경고를 달 수 있게 했다
+   - 2자 검색은 같은 쿼리를 반복하면 느려진다(2026-11-07 실측). PostgreSQL이 6번째 실행부터 검색어를 보지 않는 범용 계획(generic plan)으로 바꿀 수 있는데, 그 계획이 2자에도 GIN을 써 인덱스 전체(46,255건)를 훑는다. `아연` count 42ms → 62ms. 3자 이상(`루테인`)은 어느 계획이든 5~6ms. 응답이 60초 캐시되고 차이가 20ms라 지금은 두고, 운영에서 느리면 JDBC URL `prepareThreshold=0`(모든 쿼리에 적용) 또는 2자 검색만 다른 SQL로 나누는 것을 본다
    - 공개 조회 API 성공 응답에는 `Cache-Control: public, max-age=60`을 붙인다(검색과 같은 방식, PLANNING.md "캐시")
    - 상세 API에서 `ErrorCode`에 `PRODUCT_NOT_FOUND`를 추가하고 `ApiException`으로 던진다(예외 클래스는 검색 API에서 만듦)
    - 인증(3단계) 때 `GlobalExceptionHandler`에서 볼 것(PR #17 리뷰): `@ExceptionHandler(Exception)`이 `AccessDeniedException`·`@ResponseStatus` 예외까지 500으로 바꾼다. 401·403은 지금 `INVALID_INPUT`으로 나가므로 `UNAUTHORIZED`·`FORBIDDEN` 코드를 프론트 연동 전에 추가한다. 500 로그의 예외 메시지에 이메일이 들어갈 수 있다(UNIQUE 위반 `Key (email)=(...)`). 회원 테이블이 생기면 로그 마스킹 또는 해당 예외 별도 처리
@@ -140,6 +141,7 @@
   - 인덱스 실측(로컬 4.6만 건, 트랜잭션 안에서 만들고 롤백): name·manufacturer GIN(`gin_trgm_ops`)은 `루테인` 목록 42ms → 6~9ms. `아연`(2자)은 인덱스를 못 타 그대로(count 26ms, 목록 85ms). `product_ingredient(ingredient_id)` 인덱스는 계획이 병렬 스캔을 버려 `아연` count가 26ms → 53ms로 오히려 느려져 넣지 않았다. V9는 GIN 두 개만.
   - 실측 중 인덱스를 만든 직후 `ANALYZE product`가 2분 넘게 끝나지 않아 취소했다(원인 미확인, 통계는 이미 있어 측정에는 필요 없었다).
   - 페이지는 OFFSET(`page` 0~500, `size` 1~50). `totalCount`는 별도 count 쿼리로 구한다. 창 함수(`count(*) OVER()`)는 범위를 벗어난 페이지에서 0이 나와서다.
+  - `/code-review` 반영: 응답에 `basisCheck`·`parseStatus` 추가. 성분 조회를 alias → ingredient 2번 왕복에서 JOIN 1번(`IngredientRepository.findByAliasKey`)으로 줄였다. 검색 SQL에서 `hit` CTE가 응답 칼럼까지 가져와 product 재JOIN을 없앴다(`아연` 목록 약 60ms → 49ms). 공백 뺀 길이 기준은 `ProductSearchCondition` 한 곳으로 모았다. 과정은 노션 트러블 슈팅 "검색 API의 중복 조회 두 가지".
 - 인프라·인증·캐시 결정(PR #19 머지 뒤 논의, 이 PR에 기록). 자세한 내용은 PLANNING.md "인증"·"배포"·"캐시".
   - EC2는 small로 시작하고 탄력적 IP를 붙인다. RDS 대신 medium 증설을 먼저 본다. 이 규모에서 메모리 피크는 Postgres보다 batch JVM이라 DB를 빼도 피크가 크게 줄지 않고(추정, 실측으로 확인), RDS 비용이면 medium이 메모리를 2GB 더 준다. RDS의 장점인 자동 백업은 `pg_dump` → S3로 거의 공짜로 대신한다.
   - 세션 vs JWT: "서버 한 대면 세션, 여러 대면 JWT"는 정확하지 않다. 세션도 공유 저장소에 두면 여러 대에서 쓴다. JWT는 즉시 무효화가 어려워 연결 해제 웹훅·탈퇴와 맞지 않는다.

@@ -1,5 +1,7 @@
 package com.alkkuni.core.product.repository
 
+import com.alkkuni.core.product.enums.BasisCheck
+import com.alkkuni.core.product.enums.ParseStatus
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Repository
 import java.math.BigDecimal
@@ -17,19 +19,31 @@ enum class ProductSearchSort {
 
 /**
  * 검색 조건. textSearch면 제품명·제조사(부분 일치, 유사도), ingredientId가 있으면 그 성분이 든 제품도 찾는다.
- * 둘 중 하나는 있어야 한다.
+ * 둘 중 하나는 있어야 한다(searchable).
  */
 data class ProductSearchCondition(
     val q: String,
-    val textSearch: Boolean,
     val ingredientId: Long?,
 ) {
-    init {
-        require(textSearch || ingredientId != null) { "검색 대상이 없음" }
+    // 공백을 뺀 글자 수. 길이 기준은 여기 한 곳에서만 정한다.
+    private val length = q.count { !it.isWhitespace() }
+
+    // 2자 이상이면 제품명·제조사도 찾는다. 1자 부분 일치는 결과가 너무 넓다.
+    val textSearch = length >= TEXT_MIN_LENGTH
+
+    // 3자 미만은 trigram이 모자라 오타 허용이 의미 없고 <%가 전체 스캔 비용만 4배로 늘린다(로컬 실측 32ms → 122ms).
+    val fuzzy = length >= FUZZY_MIN_LENGTH
+
+    val searchable = textSearch || ingredientId != null
+
+    companion object {
+        const val TEXT_MIN_LENGTH = 2
+        private const val FUZZY_MIN_LENGTH = 3
     }
 }
 
 // 검색 결과 한 줄. dailyAmount·dailyUnit은 검색어가 성분일 때 그 성분의 1일 함량(모르면 null).
+// basisCheck는 그 함량이 하루치로 확인됐는지, parseStatus는 검수 대기(NEEDS_REVIEW)인지를 화면에 알리려고 함께 낸다.
 data class ProductSearchRow(
     val id: Long,
     val name: String,
@@ -38,6 +52,8 @@ data class ProductSearchRow(
     val reportedOn: LocalDate?,
     val dailyAmount: BigDecimal?,
     val dailyUnit: String?,
+    val basisCheck: BasisCheck?,
+    val parseStatus: ParseStatus,
 )
 
 /**
@@ -63,14 +79,14 @@ class ProductSearchRepository(private val jdbc: JdbcClient) {
             "LEFT JOIN (SELECT NULL::numeric AS daily_amount, NULL::varchar AS daily_unit) a ON true"
         }
         val order = when (sort) {
-            ProductSearchSort.RELEVANCE -> "hit.text_match DESC, word_similarity(:q, p.name) DESC, p.reported_on DESC NULLS LAST"
+            ProductSearchSort.RELEVANCE -> "p.text_match DESC, word_similarity(:q, p.name) DESC, p.reported_on DESC NULLS LAST"
             ProductSearchSort.LATEST -> "p.reported_on DESC NULLS LAST"
             ProductSearchSort.AMOUNT -> "a.daily_amount DESC NULLS LAST"
         }
         val sql = """
             ${hits(cond)}
-            SELECT p.id, p.name, p.manufacturer, p.form, p.reported_on, a.daily_amount, a.daily_unit
-            FROM hit JOIN product p ON p.id = hit.id
+            SELECT p.id, p.name, p.manufacturer, p.form, p.reported_on, p.basis_check, p.parse_status, a.daily_amount, a.daily_unit
+            FROM hit p
             $amount
             ORDER BY $order, p.id DESC
             LIMIT :limit OFFSET :offset
@@ -85,13 +101,14 @@ class ProductSearchRepository(private val jdbc: JdbcClient) {
     fun count(cond: ProductSearchCondition): Long =
         params(jdbc.sql("${hits(cond)} SELECT count(*) FROM hit"), cond).query(Long::class.java).single()
 
-    // 검색에 걸린 제품 id와, 제품명·제조사로 걸렸는지(text_match). 성분으로도 걸리면 한 줄로 합친다.
+    // 검색에 걸린 제품과, 제품명·제조사로 걸렸는지(text_match). 성분으로도 걸리면 한 줄로 합친다.
+    // 상태 필터에 product JOIN이 필요하므로, 그때 응답 칼럼도 같이 가져와 본 쿼리에서 product를 다시 JOIN하지 않는다.
     private fun hits(cond: ProductSearchCondition): String {
+        require(cond.searchable) { "검색 대상이 없음" }
         val sources = listOfNotNull(
             if (cond.textSearch) {
                 // 부분 일치(ILIKE)는 "고함량아연"처럼 단어 중간도 찾고, <%는 "비타민씨" → "비타민C" 같은 오타를 허용한다.
-                // 3자 미만은 trigram이 모자라 오타 허용이 의미 없고 <%가 전체 스캔 비용만 4배로 늘린다(로컬 실측 32ms → 122ms).
-                val fuzzy = if (cond.q.count { !it.isWhitespace() } >= FUZZY_MIN_LENGTH) " OR :q <% name" else ""
+                val fuzzy = if (cond.fuzzy) " OR :q <% name" else ""
                 "SELECT id, true AS text_match FROM product WHERE name ILIKE :pattern OR manufacturer ILIKE :pattern$fuzzy"
             } else {
                 null
@@ -100,7 +117,8 @@ class ProductSearchRepository(private val jdbc: JdbcClient) {
         )
         return """
             WITH hit AS (
-                SELECT p.id, bool_or(h.text_match) AS text_match
+                SELECT p.id, p.name, p.manufacturer, p.form, p.reported_on, p.basis_check, p.parse_status,
+                       bool_or(h.text_match) AS text_match
                 FROM (${sources.joinToString(" UNION ALL ")}) h
                 JOIN product p ON p.id = h.id
                 WHERE p.status = 'ACTIVE' AND NOT p.raw_material
@@ -126,9 +144,7 @@ class ProductSearchRepository(private val jdbc: JdbcClient) {
         reportedOn = getObject("reported_on", LocalDate::class.java),
         dailyAmount = getBigDecimal("daily_amount"),
         dailyUnit = getString("daily_unit"),
+        basisCheck = getString("basis_check")?.let(BasisCheck::valueOf),
+        parseStatus = ParseStatus.valueOf(getString("parse_status")),
     )
-
-    companion object {
-        private const val FUZZY_MIN_LENGTH = 3
-    }
 }

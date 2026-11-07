@@ -119,6 +119,20 @@ class ProductSearchApiTest(
     }
 
     @Test
+    fun `함량마다 하루치 확인 여부와 검수 상태를 함께 내보낸다`() {
+        // 상한을 크게 넘어 검수 대기인 값이 함량순 1위여도, 화면이 검증된 값과 구분할 수 있어야 한다.
+        product("아연 A", parseStatus = "NEEDS_REVIEW", basisCheck = "UNVERIFIED").also { ingredient(it, "아연", "90") }
+        product("아연 B", basisCheck = "DAILY").also { ingredient(it, "아연", "8.5") }
+
+        mvc.get("/api/products") { param("q", "아연"); param("sort", "amount") }.andExpect {
+            jsonPath("$.data.items[0].parseStatus") { value("NEEDS_REVIEW") }
+            jsonPath("$.data.items[0].basisCheck") { value("UNVERIFIED") }
+            jsonPath("$.data.items[1].parseStatus") { value("PARSED") }
+            jsonPath("$.data.items[1].basisCheck") { value("DAILY") }
+        }
+    }
+
+    @Test
     fun `성분이 아닌 검색어로 함량순을 요청하면 400이다`() {
         mvc.get("/api/products") { param("q", "고려은단"); param("sort", "amount") }.andExpect {
             status { isBadRequest() }
@@ -168,13 +182,15 @@ class ProductSearchApiTest(
         reportedOn: LocalDate? = null,
         rawMaterial: Boolean = false,
         status: String = "ACTIVE",
+        parseStatus: String = "PARSED",
+        basisCheck: String? = null,
     ): Long = jdbc.queryForObject(
         """
-        INSERT INTO product (report_no, name, manufacturer, raw_material, status, parse_status, parser_version, reported_on)
-        VALUES (?, ?, ?, ?, ?, 'PARSED', '1', ?) RETURNING id
+        INSERT INTO product (report_no, name, manufacturer, raw_material, status, parse_status, parser_version, reported_on, basis_check)
+        VALUES (?, ?, ?, ?, ?, ?, '1', ?, ?) RETURNING id
         """,
         Long::class.java,
-        "R${seq++}", name, manufacturer, rawMaterial, status, reportedOn,
+        "R${seq++}", name, manufacturer, rawMaterial, status, parseStatus, reportedOn, basisCheck,
     )!!
 
     private fun ingredient(productId: Long, ingredientName: String, dailyAmount: String?) {
