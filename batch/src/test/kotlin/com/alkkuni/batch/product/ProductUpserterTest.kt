@@ -73,6 +73,21 @@ class ProductUpserterTest(
     }
 
     @Test
+    fun `제형·신고일·기능성·주의사항 값을 저장하고 제형만 바뀌어도 갱신한다`() {
+        upserter.upsert(listOf(row("A", VITAMIN, form = "캡슐")))
+        assertEquals(1, upserter.upsert(listOf(row("A", VITAMIN, form = "정"))))
+
+        val saved = jdbc.queryForMap(
+            "SELECT form, reported_on, functional_materials, functionality, precautions FROM product WHERE report_no = 'A'",
+        )
+        assertEquals("정", saved["form"])
+        assertEquals(java.sql.Date.valueOf("2020-01-15"), saved["reported_on"])
+        assertEquals("감마리놀렌산 함유 유지", saved["functional_materials"])
+        assertEquals("혈중 콜레스테롤 개선", saved["functionality"])
+        assertEquals("임산부는 섭취에 주의", saved["precautions"])
+    }
+
+    @Test
     fun `기준규격이 바뀌면 성분 행을 지우고 새로 넣는다`() {
         upserter.upsert(listOf(row("A", VITAMIN)))
         upserter.upsert(listOf(row("A", "2. 비타민C : 표시량(100mg/1g)")))
@@ -136,13 +151,18 @@ class ProductUpserterTest(
         jdbc.queryForObject("SELECT count(*) FROM product", Int::class.java)!! to
             jdbc.queryForObject("SELECT count(*) FROM product_ingredient", Int::class.java)!!
 
-    private fun row(reportNo: String, standardText: String, name: String = "제품") = I0030Row(
+    private fun row(reportNo: String, standardText: String, name: String = "제품", form: String? = null) = I0030Row(
         reportNo = reportNo,
         name = name,
         manufacturer = "제조사",
         intakeMethod = null,
         standardText = standardText,
         sourceUpdatedAt = LocalDateTime.of(2026, 11, 1, 0, 0),
+        form = form,
+        reportedOn = LocalDate.of(2020, 1, 15),
+        functionalMaterials = "감마리놀렌산 함유 유지",
+        functionality = "혈중 콜레스테롤 개선",
+        precautions = "임산부는 섭취에 주의",
     )
 
     private val RAW_ONLY = "2. 진세노사이드 Rg1+Rb1+Rg3의 합 *원료성제품 표시량(30mg/g)의 100% 이상"

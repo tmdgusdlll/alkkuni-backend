@@ -37,9 +37,7 @@ class ProductUpserter(
             if (found?.sourceHash == row.sourceHash && found.parserVersion == IngredientAmountParser.VERSION) continue
 
             // 새 제품은 기준규격 없이 만들고, 기준규격과 판정(원료 여부 포함)은 applyParse가 채운다.
-            val product = found?.apply {
-                updateSource(row.name, row.manufacturer, row.intakeMethod, row.sourceHash, row.sourceUpdatedAt)
-            } ?: Product(
+            val product = (found ?: Product(
                 reportNo = row.reportNo,
                 name = row.name,
                 manufacturer = row.manufacturer,
@@ -49,7 +47,12 @@ class ProductUpserter(
                 sourceUpdatedAt = row.sourceUpdatedAt,
                 parseStatus = ParseStatus.NO_AMOUNT,
                 parserVersion = IngredientAmountParser.VERSION,
-            )
+            )).apply {
+                updateSource(
+                    row.name, row.manufacturer, row.intakeMethod, row.sourceHash, row.sourceUpdatedAt,
+                    row.form, row.reportedOn, row.functionalMaterials, row.functionality, row.precautions,
+                )
+            }
             val result = IngredientAmountParser.parse(row.standardText ?: "")
             val reparsed = product.applyParse(row.standardText, result)
             val productId = productRepository.save(product).id!!
