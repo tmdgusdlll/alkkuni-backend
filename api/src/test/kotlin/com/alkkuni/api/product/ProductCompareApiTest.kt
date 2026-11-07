@@ -81,6 +81,27 @@ class ProductCompareApiTest(
     }
 
     @Test
+    fun `사전에 없는 성분은 띄어쓰기·대소문자만 달라도 같은 행이다`() {
+        val a = product("A").also { ingredient(it, null, "3", rawName = "Unknown X") }
+        val b = product("B").also { ingredient(it, null, "4", rawName = "unknownx") }
+
+        mvc.get("/api/products/compare") { param("ids", "$a,$b") }.andExpect {
+            jsonPath("$.data.ingredients.length()") { value(1) }
+        }
+    }
+
+    @Test
+    fun `제품 수가 같은 성분끼리는 앞 열 제품의 성분이 먼저다`() {
+        // b를 나중에 적재해 성분 행 id가 더 커도, 요청에서 b가 첫 열이면 b의 성분이 위에 온다.
+        val a = product("A").also { ingredient(it, "아연", "8") }
+        val b = product("B").also { ingredient(it, "철", "12") }
+
+        mvc.get("/api/products/compare") { param("ids", "$b,$a") }.andExpect {
+            jsonPath("$.data.ingredients[*].name") { value(contains("철", "아연")) }
+        }
+    }
+
+    @Test
     fun `제품마다 하루치 확인 여부와 검수 상태를 내보낸다`() {
         val a = product("A", parseStatus = "NEEDS_REVIEW", basisCheck = "UNVERIFIED")
         val b = product("B", basisCheck = "DAILY")
@@ -96,7 +117,8 @@ class ProductCompareApiTest(
     fun `제품은 서로 다른 2~3개여야 한다`() {
         val a = product("A")
         val b = product("B")
-        listOf("$a", "$a,$a", "$a,$b,1,2").forEach { ids ->
+        // "$a,"은 빈 원소가 null로 바인딩된다
+        listOf("$a", "$a,$a", "$a,$b,1,2", "$a,", "$a,,$b").forEach { ids ->
             mvc.get("/api/products/compare") { param("ids", ids) }.andExpect {
                 status { isBadRequest() }
                 jsonPath("$.error.details[0].field") { value("ids") }

@@ -34,7 +34,7 @@ class ProductController(
 
     // ids=1,2,3. 개수·중복 검사는 서비스에서 한다.
     @GetMapping("/compare")
-    fun compare(@RequestParam ids: List<Long>): ResponseEntity<ApiResponse<ProductCompareResponse>> =
+    fun compare(@RequestParam ids: List<Long?>): ResponseEntity<ApiResponse<ProductCompareResponse>> =
         ResponseEntity.ok()
             .cacheControl(PUBLIC_CACHE)
             .body(ApiResponse.ok(compareService.compare(ids)))
