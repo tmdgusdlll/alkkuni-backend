@@ -27,15 +27,17 @@
 - [ ] **2단계: 공개 API** ‖ 배포 계속(CloudFront, 도메인 연결)
   - [x] `ApiResponse`·`@RestControllerAdvice` (PR #17)
   - [x] 수집 칼럼 추가(제형, 신고일, 기능성 원료, 기능성 원문, 주의사항) + 재적재 (PR #19)
-  - [ ] **다음**: 검색 API(정렬만) → 제품 비교 API(같은 성분 여러 행 규칙 먼저) → 제품 상세
+  - [x] 검색 API(정렬만, V9 trigram 인덱스)
+  - [ ] **다음**: 제품 비교 API(같은 성분 여러 행 규칙 먼저) → 제품 상세
   - [ ] 브랜드 사전 → 1일 기준값 → 성분별 제품 목록 API(JDSL, 필터) → 기능성 카테고리 사전
+  - [ ] 메인 인기 성분 비교(고정 목록), `product.image_url` 관리자 등록, 구매 링크(ADR-008). PLANNING.md MVP 표에 있는데 작업 순서에서 빠져 있었다(2026-11-07)
 - [ ] **3단계: 인증 + 서랍** ‖ 회수 매칭(batch)
-  - 소셜 로그인(웹훅 포함), `Member.role`·감사 로그 → 서랍, 마이페이지
+  - 소셜 로그인(웹훅 포함, 세션 + `spring-session-jdbc`), `Member.role`·감사 로그 → 서랍, 마이페이지
 - [ ] **4단계: 회수 알림** ‖ 관리자·검수 API
   - Outbox + SES 발송(서랍과 회수 매칭이 모두 있어야 함)
   - 관리자: 파싱 검수, 회수 매칭 검수, `collect_request` 수집 현황·수동 실행
 - [ ] **5단계: 공개 배포**
-  - CD 자동화(헬스 체크 실패 시 롤백), 백업·복구 훈련, 보안 체크리스트, CloudWatch 알람
+  - CD 자동화(헬스 체크 실패 시 롤백), 백업(`pg_dump` → S3)·복구 훈련, 보안 체크리스트, CloudWatch 알람
 
 ## 다음 할 일
 
@@ -61,13 +63,11 @@
    - 1일 함량을 알 수 없는 행 약 1,950건 중 약 940건은 분모가 `/g`인데 섭취방법에 중량이 없다(`1일 2캡슐`). 식약처 다른 API에 1회 중량·내용량 필드가 있는지 조사, 없으면 관리자 검수 대상
    - 정함(2026-11-06, 11-05 "추정" 표시를 바꿈): `UNVERIFIED`·`UNREADABLE`(분모를 확인하지 못한 값)은 "표시 기준량" 배지를 단다. 추정 비율(원료 제외 제품의 77%)을 줄이는 개선은 따로 시간을 들여 한다
    - 검수(`REVIEWED`) 제품은 원문이 같으면 성분 행을 다시 쓰지 않아 섭취방법이 바뀌어도 `daily_amount`가 그대로다. 관리자 검수 흐름을 만들 때 같이 본다
-3. 제품 검색 API: `GET /api/products?q=&sort=`, 제품명·제조사·성분 검색, 전체 건수(`totalCount`). 화면 전체 결정은 PLANNING.md "검색·목록·비교 화면"
-   - 정렬만 둔다: 관련도순, 최신 신고순(`product.reported_on`. `source_updated_at`은 수정일), 성분 함량 높은순(검색어가 성분일 때만)
-   - 쿼리는 네이티브 SQL(`JdbcClient` 또는 `@Query(nativeQuery = true)`). JDSL은 성분별 제품 목록 API 때 들인다
-   - 정한 것(2026-11-05): 원료 품목 제외. 최소 2자, 1자는 성분명 정확 일치만(`철`). 성분은 사전(`ingredient_alias`)으로 정확 일치만 찾고 유사도는 제품명·제조사에만. 제품명·제조사 일치를 먼저, 성분만 일치를 뒤에. 응답에 `matchedIngredient`
-   - 길이 실측(원료 제외, 공백 제거): 제품명 3자 미만 0.4%(168개), 제조사 1곳, 대표 성분 215개 중 11개(`아연`·`엽산`·`칼슘`·`철` 등, 연결 성분 행의 18.5%)라 3자 제한은 흔한 검색을 막는다
-   - 검증: `아연`처럼 결과가 1만 건 넘는 검색어로 목록·count 쿼리 `EXPLAIN ANALYZE`. 느리면 GIN(`gin_trgm_ops`) 마이그레이션(V9). 2자 검색어는 trigram 인덱스를 못 탄다
-   - 도메인 에러를 던질 컨트롤러가 생기면 `ErrorCode`에 `PRODUCT_NOT_FOUND` 같은 코드와 예외 클래스를 함께 추가한다
+3. 공개 API 공통
+   - 검색 API에서 확인한 것(2026-11-07): 함량순·`dailyAmount`는 같은 제품의 같은 성분 행 중 가장 큰 값 하나를 쓴다(비교 API에서 합산 규칙을 정하면 검색도 맞춘다). 한 성분 안에서도 단위가 섞여 있다(엽산 `mg DFE` 2,792행·`mg` 1,700행, 비타민 A `mg RAE`·`mg RE`·`mg`). 함량순은 단위를 보지 않고 숫자로만 정렬하므로 성분별 목록 API 전에 환산 또는 단위별 분리를 정한다
+   - `아연` 함량순 1위가 `원기정 셀렌효모` 90mg이다(상한 35mg). 함량순 상위 의심 값 검수는 관리자 검수 흐름에서 본다
+   - 공개 조회 API 성공 응답에는 `Cache-Control: public, max-age=60`을 붙인다(검색과 같은 방식, PLANNING.md "캐시")
+   - 상세 API에서 `ErrorCode`에 `PRODUCT_NOT_FOUND`를 추가하고 `ApiException`으로 던진다(예외 클래스는 검색 API에서 만듦)
    - 인증(3단계) 때 `GlobalExceptionHandler`에서 볼 것(PR #17 리뷰): `@ExceptionHandler(Exception)`이 `AccessDeniedException`·`@ResponseStatus` 예외까지 500으로 바꾼다. 401·403은 지금 `INVALID_INPUT`으로 나가므로 `UNAUTHORIZED`·`FORBIDDEN` 코드를 프론트 연동 전에 추가한다. 500 로그의 예외 메시지에 이메일이 들어갈 수 있다(UNIQUE 위반 `Key (email)=(...)`). 회원 테이블이 생기면 로그 마스킹 또는 해당 예외 별도 처리
 4. 배포 준비: 단계·출처는 `docs/guide/deploy-prep.md`(로컬 전용). 도메인·SES 도메인 인증·ACM·세 제공자 운영 URI는 끝남(2026-11-06)
    - 남은 것(직접): SES 프로덕션 액세스 요청(첫 응답 최대 96시간, 웹사이트 URL 필요), KIPRIS 상표 확인, 개인정보처리방침·약관 초안
@@ -77,6 +77,7 @@
    - 인증 PR에서: CloudFront → Nginx → API를 거치면 Spring이 리다이렉트 URI를 http나 EC2 주소로 만들 수 있다. `forward-headers-strategy` 또는 운영 `redirect-uri` 고정
 5. 기본 배포(1단계 병렬 레인): ECR 푸시 → EC2. 처음엔 3주차 CloudFront 때로 미뤘지만, 웹훅·SES 도메인·메모리 실측이 모두 배포를 기다려 앞당김
    - 정할 것: Dockerfile 방식(Boot `bootBuildImage` vs 직접 작성), OIDC IAM 역할 범위
+   - 정함(2026-11-07): t4g.small로 시작, 탄력적 IP 연결, swap 1~2GB. 메모리 실측 뒤 부족하면 medium(PLANNING.md "배포")
    - 검증: EC2에서 `/actuator/health` UP
    - 확인: 운영 compose(또는 Dockerfile)에 `SPRING_PROFILES_ACTIVE=prod` 지정. 공통 yaml의 기본 프로필이 `local`이라 빠지면 `localhost` DB로 접속을 시도한다
    - 확인: 운영 DB 비밀번호는 새로 생성해 Parameter Store에 둔다. `.env.example` 값은 로컬 전용 예시
@@ -85,11 +86,13 @@
    - 태그: `latest`와 `github.sha`를 함께 붙여 롤백할 이미지를 남긴다. 레이어 캐시는 `cache-from/to: type=gha`
    - 배포 job은 `concurrency`의 `cancel-in-progress: false`(중간에 끊기면 서버가 어중간한 상태로 남음)
    - 배포 후 `/actuator/health` UP 확인 단계로 끝낸다
+   - 검증 추가: batch 실행 중 `docker stats` 피크와 swap 사용량 기록 → 미해결 질문 "2GB로 컨테이너 4개" 답
    - 기동 순서: api(Flyway) → 헬스 UP → batch. batch는 Flyway 없이 `ddl-auto=validate`만 하므로 새 마이그레이션이 적용되기 전에 뜨면 기동에 실패한다
    - jar artifact 전달은 Dockerfile 방식이 정해진 뒤 판단. 멀티 모듈이라 경로는 `api/build/libs`, `-plain.jar` 제외
 
 ## 완료
 
+- [x] 제품 검색 API(`GET /api/products?q=&sort=&page=&size=`, `ProductSearchRepository` 네이티브 SQL, `ApiException`, V9 trigram 인덱스), 로컬 실제 데이터로 호출 확인 (2026-11-07)
 - [x] 수집 칼럼 추가(V8 `form`·`reported_on`·`functional_materials`·`functionality`·`precautions`), 로컬 재적재로 46,249건 갱신 확인 (PR #19, 2026-11-07)
 - [x] 성분 사전(V7, 성분 215개·키 424개, 영문명·표시명)과 연결(적재 시 + `link-ingredients`), 비타민 D IU 환산, 로컬 연결률 98.6% (PR #18, 2026-11-05)
 - [x] 공통 응답 형식 `ApiResponse`·`GlobalExceptionHandler`, Spring 내장 에러도 같은 형식 (PR #17, 2026-11-05)
@@ -131,6 +134,16 @@
 ## 작업 로그
 
 ### 2026-11-07
+- 제품 검색 API (`feat/api-search`). 2026-11-05에 정한 규칙(원료 제외, 1자는 성분 정확 일치만, 성분은 사전 정확 일치, 제품명·제조사 일치 먼저)대로 만들었다.
+  - 제품명·제조사는 부분 일치(`ILIKE '%q%'`)와 단어 유사도(`<%`, `word_similarity`)를 함께 쓴다. `<%`만으로는 "고함량아연"처럼 단어 중간의 2자를 못 찾고(유사도 0.33), `ILIKE`만으로는 "비타민씨" → "비타민C" 같은 오타를 못 찾는다.
+  - `<%`는 3자 이상에서만 쓴다. 2자는 trigram이 모자라 오타 허용 의미가 없고, `아연` 제품 스캔이 32ms → 122ms로 4배가 됐다.
+  - 인덱스 실측(로컬 4.6만 건, 트랜잭션 안에서 만들고 롤백): name·manufacturer GIN(`gin_trgm_ops`)은 `루테인` 목록 42ms → 6~9ms. `아연`(2자)은 인덱스를 못 타 그대로(count 26ms, 목록 85ms). `product_ingredient(ingredient_id)` 인덱스는 계획이 병렬 스캔을 버려 `아연` count가 26ms → 53ms로 오히려 느려져 넣지 않았다. V9는 GIN 두 개만.
+  - 실측 중 인덱스를 만든 직후 `ANALYZE product`가 2분 넘게 끝나지 않아 취소했다(원인 미확인, 통계는 이미 있어 측정에는 필요 없었다).
+  - 페이지는 OFFSET(`page` 0~500, `size` 1~50). `totalCount`는 별도 count 쿼리로 구한다. 창 함수(`count(*) OVER()`)는 범위를 벗어난 페이지에서 0이 나와서다.
+- 인프라·인증·캐시 결정(PR #19 머지 뒤 논의, 이 PR에 기록). 자세한 내용은 PLANNING.md "인증"·"배포"·"캐시".
+  - EC2는 small로 시작하고 탄력적 IP를 붙인다. RDS 대신 medium 증설을 먼저 본다. 이 규모에서 메모리 피크는 Postgres보다 batch JVM이라 DB를 빼도 피크가 크게 줄지 않고(추정, 실측으로 확인), RDS 비용이면 medium이 메모리를 2GB 더 준다. RDS의 장점인 자동 백업은 `pg_dump` → S3로 거의 공짜로 대신한다.
+  - 세션 vs JWT: "서버 한 대면 세션, 여러 대면 JWT"는 정확하지 않다. 세션도 공유 저장소에 두면 여러 대에서 쓴다. JWT는 즉시 무효화가 어려워 연결 해제 웹훅·탈퇴와 맞지 않는다.
+  - Redis는 나중에 캐시로 들여 보고 싶다(사용자). 그 전에 브라우저 `max-age=60` → CloudFront `s-maxage` 순서로 간다.
 - 수집 칼럼 추가 (`feat/collect-columns`, PR #19). I0030의 제형(`PRDT_SHAP_CD_NM`), 신고일(`PRMS_DT`), 기능성 원료(`INDIV_RAWMTRL_NM`), 기능성 원문(`PRIMARY_FNCLTY`), 주의사항(`IFTKN_ATNT_MATR_CN`)을 `product`에 원문 그대로 저장한다.
   - 주의사항은 처음 계획에 없었다. MVP 제품 상세에 들어가는데 지금 빼면 상세 API 때 47페이지를 다시 받아야 해서 같이 넣었다.
   - 기능성 원료는 목록이지만 텍스트 칼럼 하나로 둔다. 별도 테이블은 단일/복합 원료 필터를 만들 때 정한다.
