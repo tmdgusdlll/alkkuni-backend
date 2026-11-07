@@ -127,6 +127,11 @@ class IngredientLinkerTest(
         intakeMethod = null,
         standardText = standardText,
         sourceUpdatedAt = LocalDateTime.of(2026, 11, 1, 0, 0),
+        form = null,
+        reportedOn = null,
+        functionalMaterials = null,
+        functionality = null,
+        precautions = null,
     )
 
     private val STANDARD =

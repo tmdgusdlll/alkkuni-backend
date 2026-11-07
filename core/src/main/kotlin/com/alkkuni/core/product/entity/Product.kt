@@ -20,6 +20,7 @@ import jakarta.persistence.Id
 import jakarta.persistence.Table
 import java.math.BigDecimal
 import java.math.MathContext
+import java.time.LocalDate
 import java.time.LocalDateTime
 
 @Entity
@@ -105,6 +106,22 @@ class Product(
     var basisCheck: BasisCheck? = null
         protected set
 
+    // 신고 정보 원문. 제형(form), 신고일(reportedOn), 기능성 원료 목록, 기능성 원문, 섭취 시 주의사항.
+    var form: String? = null
+        protected set
+
+    var reportedOn: LocalDate? = null
+        protected set
+
+    var functionalMaterials: String? = null
+        protected set
+
+    var functionality: String? = null
+        protected set
+
+    var precautions: String? = null
+        protected set
+
     // 기준규격(standardText)과 그로부터 정하는 값(판정, 원료 여부, 판정 버전, 섭취방법 파싱, 분모 확인)은 applyParse로만 바꾼다.
     // 규칙이 바뀌어 다시 판정할 때 applyParse 하나만 부르면 모두 새 규칙으로 맞춰진다.
     fun updateSource(
@@ -113,12 +130,22 @@ class Product(
         intakeMethod: String?,
         sourceHash: String,
         sourceUpdatedAt: LocalDateTime?,
+        form: String?,
+        reportedOn: LocalDate?,
+        functionalMaterials: String?,
+        functionality: String?,
+        precautions: String?,
     ) {
         this.name = name
         this.manufacturer = manufacturer
         this.intakeMethod = intakeMethod
         this.sourceHash = sourceHash
         this.sourceUpdatedAt = sourceUpdatedAt
+        this.form = form
+        this.reportedOn = reportedOn
+        this.functionalMaterials = functionalMaterials
+        this.functionality = functionality
+        this.precautions = precautions
     }
 
     /**
