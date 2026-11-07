@@ -28,7 +28,8 @@
   - [x] `ApiResponse`·`@RestControllerAdvice` (PR #17)
   - [x] 수집 칼럼 추가(제형, 신고일, 기능성 원료, 기능성 원문, 주의사항) + 재적재 (PR #19)
   - [x] 검색 API(정렬만, V9 trigram 인덱스)
-  - [ ] **다음**: 제품 비교 API(같은 성분 여러 행 규칙 먼저) → 제품 상세
+  - [x] 제품 비교 API(같은 성분 여러 행은 합치지 않음) (PR #21)
+  - [ ] **다음**: 제품 상세 API
   - [ ] 브랜드 사전 → 1일 기준값 → 성분별 제품 목록 API(JDSL, 필터) → 기능성 카테고리 사전
   - [ ] 메인 인기 성분 비교(고정 목록), `product.image_url` 관리자 등록, 구매 링크(ADR-008). PLANNING.md MVP 표에 있는데 작업 순서에서 빠져 있었다(2026-11-07)
 - [ ] **3단계: 인증 + 서랍** ‖ 회수 매칭(batch)
@@ -93,7 +94,8 @@
 
 ## 완료
 
-- [x] 제품 검색 API(`GET /api/products?q=&sort=&page=&size=`, `ProductSearchRepository` 네이티브 SQL, `ApiException`, V9 trigram 인덱스), 로컬 실제 데이터로 호출 확인 (2026-11-07)
+- [x] 제품 비교 API(`GET /api/products/compare?ids=`, 2~3개, `PRODUCT_NOT_FOUND`), 로컬 실제 데이터로 호출 확인 (PR #21, 2026-11-07)
+- [x] 제품 검색 API(`GET /api/products?q=&sort=&page=&size=`, `ProductSearchRepository` 네이티브 SQL, `ApiException`, V9 trigram 인덱스), 로컬 실제 데이터로 호출 확인 (PR #20, 2026-11-07)
 - [x] 수집 칼럼 추가(V8 `form`·`reported_on`·`functional_materials`·`functionality`·`precautions`), 로컬 재적재로 46,249건 갱신 확인 (PR #19, 2026-11-07)
 - [x] 성분 사전(V7, 성분 215개·키 424개, 영문명·표시명)과 연결(적재 시 + `link-ingredients`), 비타민 D IU 환산, 로컬 연결률 98.6% (PR #18, 2026-11-05)
 - [x] 공통 응답 형식 `ApiResponse`·`GlobalExceptionHandler`, Spring 내장 에러도 같은 형식 (PR #17, 2026-11-05)
@@ -135,6 +137,12 @@
 ## 작업 로그
 
 ### 2026-11-07
+- 제품 비교 API (`feat/api-compare`, PR #21). 같은 성분 여러 행(505쌍)을 원문 표본으로 조사해 합치지 않기로 했다(분류와 수치는 PLANNING.md "함량 표시 규칙").
+  - 합산과 최댓값 모두 일부에서 틀린다. 멀티팩(약 72%)은 최댓값이 과소, 수출국별·원료용 중복 규격은 합산이 과대다. 원문 판정 없이 행을 그대로 주면 틀린 숫자를 만들지 않는다.
+  - 응답은 성분 행 × 제품 열이고 칸마다 함량 목록이다(없으면 빈 목록). 사전에 없는 성분(`ingredient_id` NULL)은 원문 이름이 같을 때만 같은 행이다. 여러 제품에 든 성분이 먼저 온다.
+  - 기준 대비 %·충족은 1일 기준값(`ingredient` 칼럼)이 생기면 응답 필드를 더한다. 필드 추가라 화면 호환이 깨지지 않는다.
+  - 없거나 삭제(`DELETED`)된 제품은 `PRODUCT_NOT_FOUND`(404), 개수(2~3)·중복은 `INVALID_INPUT`. 원료 품목은 막지 않는다(검색에서 빠져 담을 수 없고, 담겨도 1일 함량이 null일 뿐이다).
+  - `/code-review` 반영: `ids=5,`의 빈 원소가 null로 바인딩돼 500이 났다(Kotlin은 `List<Long>` 원소 null을 검사하지 않음). `List<Long?>`로 받아 400으로 보낸다. 사전 밖 성분은 원문 그대로가 아니라 `IngredientName.normalize` 키로 묶어 띄어쓰기·대소문자 차이로 행이 갈라지지 않게 했다. 제품 수가 같은 성분은 앞 열 제품의 성분이 먼저 오게 했다(전에는 먼저 적재된 제품 순). 엔티티 전체 조회는 2~3행이라 두었다(ponytail 주석).
 - 제품 검색 API (`feat/api-search`). 2026-11-05에 정한 규칙(원료 제외, 1자는 성분 정확 일치만, 성분은 사전 정확 일치, 제품명·제조사 일치 먼저)대로 만들었다.
   - 제품명·제조사는 부분 일치(`ILIKE '%q%'`)와 단어 유사도(`<%`, `word_similarity`)를 함께 쓴다. `<%`만으로는 "고함량아연"처럼 단어 중간의 2자를 못 찾고(유사도 0.33), `ILIKE`만으로는 "비타민씨" → "비타민C" 같은 오타를 못 찾는다.
   - `<%`는 3자 이상에서만 쓴다. 2자는 trigram이 모자라 오타 허용 의미가 없고, `아연` 제품 스캔이 32ms → 122ms로 4배가 됐다.

@@ -15,7 +15,10 @@ import java.time.Duration
 
 @RestController
 @RequestMapping("/api/products")
-class ProductController(private val searchService: ProductSearchService) {
+class ProductController(
+    private val searchService: ProductSearchService,
+    private val compareService: ProductCompareService,
+) {
 
     // 공개 조회라 성공 응답만 60초 캐시한다(PLANNING.md "캐시"). 에러 응답은 GlobalExceptionHandler가 만들어 헤더가 붙지 않는다.
     @GetMapping
@@ -26,11 +29,20 @@ class ProductController(private val searchService: ProductSearchService) {
         @RequestParam(defaultValue = "20") @Min(1) @Max(50) size: Int,
     ): ResponseEntity<ApiResponse<ProductSearchResponse>> =
         ResponseEntity.ok()
-            .cacheControl(CacheControl.maxAge(Duration.ofSeconds(60)).cachePublic())
+            .cacheControl(PUBLIC_CACHE)
             .body(ApiResponse.ok(searchService.search(q, sort, page, size)))
+
+    // ids=1,2,3. 개수·중복 검사는 서비스에서 한다.
+    @GetMapping("/compare")
+    fun compare(@RequestParam ids: List<Long?>): ResponseEntity<ApiResponse<ProductCompareResponse>> =
+        ResponseEntity.ok()
+            .cacheControl(PUBLIC_CACHE)
+            .body(ApiResponse.ok(compareService.compare(ids)))
 
     companion object {
         // ponytail: OFFSET 페이지네이션. 깊은 페이지는 앞 행을 모두 읽으므로 상한을 둔다. 무한 스크롤이 필요해지면 키셋으로 바꾼다.
         private const val MAX_PAGE = 500L
+
+        private val PUBLIC_CACHE = CacheControl.maxAge(Duration.ofSeconds(60)).cachePublic()
     }
 }
