@@ -42,6 +42,10 @@ class GlobalExceptionHandler : ResponseEntityExceptionHandler() {
         return super.handleExceptionInternal(ex, ApiResponse.error(code, details(ex)), headers, statusCode, request)
     }
 
+    @ExceptionHandler(ApiException::class)
+    fun handleApi(ex: ApiException): ResponseEntity<ApiResponse<Nothing>> =
+        ResponseEntity.status(ex.code.status).body(ApiResponse.error(ex.code, ex.details))
+
     // ponytail: @ResponseStatus 예외·Spring Security 예외도 여기서 500이 된다. 인증(3단계)을 넣을 때 따로 처리한다.
     @ExceptionHandler(Exception::class)
     fun handleUnexpected(ex: Exception): ResponseEntity<ApiResponse<Nothing>> {
