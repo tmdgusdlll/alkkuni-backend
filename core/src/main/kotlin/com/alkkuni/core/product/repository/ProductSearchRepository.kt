@@ -65,7 +65,7 @@ class ProductSearchRepository(private val jdbc: JdbcClient) {
 
     fun search(cond: ProductSearchCondition, sort: ProductSearchSort, offset: Long, limit: Int): List<ProductSearchRow> {
         require(sort != ProductSearchSort.AMOUNT || cond.ingredientId != null) { "함량순은 성분 검색에서만" }
-        // ponytail: 같은 제품에 같은 성분 행이 여러 개면(멀티팩 등 505쌍) 가장 큰 값 하나만 쓴다. 비교 API에서 합산 규칙을 정하면 맞춘다.
+        // ponytail: 같은 제품에 같은 성분 행이 여러 개면(멀티팩 등 505쌍) 가장 큰 값 하나로 정렬한다. 멀티팩은 실제보다 낮다. 파서가 구성품 구간을 나누면 합산으로 바꾼다(PLANNING.md "함량 표시 규칙").
         // ponytail: 한 성분 안에서도 단위가 섞여 있다(엽산 mg DFE·mg, 비타민 A mg RAE·mg RE). 함량순은 단위를 보지 않고 숫자로만 정렬한다.
         val amount = if (cond.ingredientId != null) {
             """

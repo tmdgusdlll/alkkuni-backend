@@ -13,4 +13,7 @@ interface ProductIngredientRepository : JpaRepository<ProductIngredient, Long> {
 
     // link-ingredients가 IU 행의 1일 함량을 다시 계산할 때 쓴다(로컬 21행).
     fun findAllByUnitIn(units: Collection<String>): List<ProductIngredient>
+
+    // 제품 비교가 2~3개 제품의 성분 행을 한 번에 읽는다. id 순서는 원문 성분표 순서다.
+    fun findAllByProductIdInOrderById(productIds: Collection<Long>): List<ProductIngredient>
 }
