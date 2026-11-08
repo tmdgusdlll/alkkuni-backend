@@ -19,6 +19,11 @@ dependencyManagement {
 dependencies {
     // api: core를 쓰는 모듈도 Entity·Repository 타입을 컴파일할 수 있도록 노출한다.
     api("org.springframework.boot:spring-boot-starter-data-jpa")
+    // 선택 조건이 많은 동적 쿼리(성분별 제품 목록)용. Spring Data 리포지토리에 KotlinJdslJpqlExecutor를 붙인다.
+    // ProductRepository의 상위 타입이라 core를 쓰는 모듈도 컴파일할 수 있게 api로 노출한다.
+    api("com.linecorp.kotlin-jdsl:jpql-dsl:3.9.0")
+    api("com.linecorp.kotlin-jdsl:jpql-render:3.9.0")
+    api("com.linecorp.kotlin-jdsl:spring-data-jpa-boot4-support:3.9.0")
 }
 
 allOpen {
