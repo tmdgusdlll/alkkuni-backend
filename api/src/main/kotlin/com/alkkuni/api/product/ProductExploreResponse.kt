@@ -3,9 +3,7 @@ package com.alkkuni.api.product
 import com.alkkuni.core.ingredient.entity.Ingredient
 import com.alkkuni.core.product.enums.BasisCheck
 import com.alkkuni.core.product.enums.ParseStatus
-import com.alkkuni.core.product.repository.ExploreAmount
 import com.alkkuni.core.product.repository.ProductExploreRow
-import java.math.BigDecimal
 import java.time.LocalDate
 
 data class ProductExploreResponse(
@@ -36,11 +34,11 @@ data class ProductExploreItem(
     val amounts: List<ExploreItemAmount>,
 )
 
-// 고른 성분 하나의 1일 함량. 계산할 수 없으면 dailyAmount가 null이다.
+// 고른 성분 하나의 함량 행들(원문 성분표 순서, 비교 API와 같은 타입).
+// 한 제품에 같은 성분 행이 여러 개면 합치지 않는다(PLANNING.md "함량 표시 규칙"). 1일 함량을 모르면 dailyAmount가 null이고 원문 값(amount/basis)을 보여준다.
 data class ExploreItemAmount(
     val ingredientId: Long,
-    val dailyAmount: BigDecimal?,
-    val dailyUnit: String?,
+    val values: List<CompareAmount>,
 )
 
 fun Ingredient.toExploreIngredient() = ExploreIngredient(id = requireNotNull(id), name = displayName, defaultUnit = defaultUnit)
@@ -55,5 +53,3 @@ fun ProductExploreRow.toExploreItem(amounts: List<ExploreItemAmount>) = ProductE
     parseStatus = parseStatus,
     amounts = amounts,
 )
-
-fun ExploreAmount?.toItemAmount(ingredientId: Long) = ExploreItemAmount(ingredientId, this?.dailyAmount, this?.dailyUnit)

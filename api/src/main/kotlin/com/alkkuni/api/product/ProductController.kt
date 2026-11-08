@@ -1,12 +1,13 @@
 package com.alkkuni.api.product
 
 import com.alkkuni.api.common.ApiResponse
+import com.alkkuni.api.common.PUBLIC_CACHE
+import jakarta.validation.constraints.DecimalMax
 import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.PositiveOrZero
 import jakarta.validation.constraints.Size
-import org.springframework.http.CacheControl
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -14,7 +15,6 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import java.math.BigDecimal
-import java.time.Duration
 
 @RestController
 @RequestMapping("/api/products")
@@ -51,8 +51,8 @@ class ProductController(
         @RequestParam ingredient: List<Long?>,
         @RequestParam(required = false) exclude: List<Long?>?,
         @RequestParam(required = false) form: List<String>?,
-        @RequestParam(required = false) @PositiveOrZero min: BigDecimal?,
-        @RequestParam(required = false) @PositiveOrZero max: BigDecimal?,
+        @RequestParam(required = false) @PositiveOrZero @DecimalMax(MAX_AMOUNT) min: BigDecimal?,
+        @RequestParam(required = false) @PositiveOrZero @DecimalMax(MAX_AMOUNT) max: BigDecimal?,
         @RequestParam(defaultValue = "amount") sort: String,
         @RequestParam(defaultValue = "0") @Min(0) @Max(MAX_PAGE) page: Int,
         @RequestParam(defaultValue = "20") @Min(1) @Max(50) size: Int,
@@ -72,6 +72,8 @@ class ProductController(
         // ponytail: OFFSET 페이지네이션. 깊은 페이지는 앞 행을 모두 읽으므로 상한을 둔다. 무한 스크롤이 필요해지면 키셋으로 바꾼다.
         private const val MAX_PAGE = 500L
 
-        private val PUBLIC_CACHE = CacheControl.maxAge(Duration.ofSeconds(60)).cachePublic()
+        // 함량 범위 상한. 균수(CFU)가 1일 수천억(1e11)대라 넉넉히 두되, PostgreSQL numeric을 넘는 값("1e999999999")이 500이 되지 않게 막는다.
+        private const val MAX_AMOUNT = "1E15"
+
     }
 }

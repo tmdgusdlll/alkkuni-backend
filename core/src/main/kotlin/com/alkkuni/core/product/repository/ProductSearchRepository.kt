@@ -19,11 +19,12 @@ enum class ProductSearchSort {
 
 /**
  * 검색 조건. textSearch면 제품명·제조사(부분 일치, 유사도), ingredientId가 있으면 그 성분이 든 제품도 찾는다.
- * 둘 중 하나는 있어야 한다(searchable).
+ * 둘 중 하나는 있어야 한다(searchable). defaultUnit은 그 성분의 주 단위(Ingredient.defaultUnit)다.
  */
 data class ProductSearchCondition(
     val q: String,
     val ingredientId: Long?,
+    val defaultUnit: String? = null,
 ) {
     // 공백을 뺀 글자 수. 길이 기준은 여기 한 곳에서만 정한다.
     private val length = q.count { !it.isWhitespace() }
@@ -66,13 +67,17 @@ class ProductSearchRepository(private val jdbc: JdbcClient) {
     fun search(cond: ProductSearchCondition, sort: ProductSearchSort, offset: Long, limit: Int): List<ProductSearchRow> {
         require(sort != ProductSearchSort.AMOUNT || cond.ingredientId != null) { "함량순은 성분 검색에서만" }
         // ponytail: 같은 제품에 같은 성분 행이 여러 개면(멀티팩 등 505쌍) 가장 큰 값 하나로 정렬한다. 멀티팩은 실제보다 낮다. 파서가 구성품 구간을 나누면 합산으로 바꾼다(PLANNING.md "함량 표시 규칙").
-        // ponytail: 한 성분 안에서도 단위가 섞여 있다(엽산 mg DFE·mg, 비타민 A mg RAE·mg RE). 함량순은 단위를 보지 않고 숫자로만 정렬한다.
+        // 주 단위가 있는 성분(엽산·비타민 A 등)은 단위가 다른 값끼리 숫자로 비교하지 않는다.
+        // 행 선택과 함량순 모두 주 단위 값 → 다른 단위(단위 내림차순) 값 → 모르는 값 순이다. 성분별 목록(ProductExploreRepository)과 같은 규칙이다.
+        val unitOrder = { alias: String ->
+            if (cond.defaultUnit != null) "($alias.daily_unit = :defaultUnit) DESC NULLS LAST, $alias.daily_unit DESC NULLS LAST, " else ""
+        }
         val amount = if (cond.ingredientId != null) {
             """
             LEFT JOIN LATERAL (
                 SELECT pi.daily_amount, pi.daily_unit FROM product_ingredient pi
                 WHERE pi.product_id = p.id AND pi.ingredient_id = :ingredientId
-                ORDER BY pi.daily_amount DESC NULLS LAST LIMIT 1
+                ORDER BY ${unitOrder("pi")}pi.daily_amount DESC NULLS LAST LIMIT 1
             ) a ON true
             """
         } else {
@@ -81,7 +86,7 @@ class ProductSearchRepository(private val jdbc: JdbcClient) {
         val order = when (sort) {
             ProductSearchSort.RELEVANCE -> "p.text_match DESC, word_similarity(:q, p.name) DESC, p.reported_on DESC NULLS LAST"
             ProductSearchSort.LATEST -> "p.reported_on DESC NULLS LAST"
-            ProductSearchSort.AMOUNT -> "a.daily_amount DESC NULLS LAST"
+            ProductSearchSort.AMOUNT -> "${unitOrder("a")}a.daily_amount DESC NULLS LAST"
         }
         val sql = """
             ${hits(cond)}
@@ -132,6 +137,7 @@ class ProductSearchRepository(private val jdbc: JdbcClient) {
         .param("q", cond.q)
         .param("pattern", "%${escapeLike(cond.q)}%")
         .param("ingredientId", cond.ingredientId)
+        .param("defaultUnit", cond.defaultUnit)
 
     // LIKE의 와일드카드(%, _)와 이스케이프 문자(\, PostgreSQL 기본값)를 글자 그대로 찾게 한다.
     private fun escapeLike(s: String) = s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")

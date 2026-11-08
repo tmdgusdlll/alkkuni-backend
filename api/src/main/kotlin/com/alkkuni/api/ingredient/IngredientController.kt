@@ -1,15 +1,14 @@
 package com.alkkuni.api.ingredient
 
 import com.alkkuni.api.common.ApiResponse
+import com.alkkuni.api.common.PUBLIC_CACHE
 import com.alkkuni.core.ingredient.entity.Ingredient
 import com.alkkuni.core.ingredient.repository.IngredientRepository
 import org.springframework.data.domain.Sort
-import org.springframework.http.CacheControl
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
-import java.time.Duration
 
 /**
  * 성분 사전 전체. 성분별 제품 목록에서 성분을 고르는 화면이 쓴다.
@@ -22,7 +21,7 @@ class IngredientController(private val ingredientRepository: IngredientRepositor
     @GetMapping
     fun list(): ResponseEntity<ApiResponse<List<IngredientItem>>> =
         ResponseEntity.ok()
-            .cacheControl(CacheControl.maxAge(Duration.ofSeconds(60)).cachePublic())
+            .cacheControl(PUBLIC_CACHE)
             .body(ApiResponse.ok(ingredientRepository.findAll(Sort.by("displayName")).map { it.toItem() }))
 }
 

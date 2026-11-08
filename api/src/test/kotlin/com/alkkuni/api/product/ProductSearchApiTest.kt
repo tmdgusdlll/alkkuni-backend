@@ -133,6 +133,20 @@ class ProductSearchApiTest(
     }
 
     @Test
+    fun `주 단위가 있는 성분은 검색에서도 성분별 목록과 같은 값·순서를 쓴다`() {
+        // 엽산 주 단위는 mg DFE(V10). mg 0.6이 숫자로는 커도 0.4 mg DFE를 고르고, mg 값만 있는 제품은 뒤에 둔다.
+        val mixed = product("엽산 A").also { ingredient(it, "엽산", "0.4", "mg DFE"); ingredient(it, "엽산", "0.6") }
+        val mgOnly = product("엽산 B").also { ingredient(it, "엽산", "0.9") }
+        val dfe = product("엽산 C").also { ingredient(it, "엽산", "0.5", "mg DFE") }
+
+        mvc.get("/api/products") { param("q", "엽산"); param("sort", "amount") }.andExpect {
+            jsonPath("$.data.items[*].id") { value(contains(dfe.toInt(), mixed.toInt(), mgOnly.toInt())) }
+            jsonPath("$.data.items[1].dailyAmount") { value(0.4) }
+            jsonPath("$.data.items[1].dailyUnit") { value("mg DFE") }
+        }
+    }
+
+    @Test
     fun `성분이 아닌 검색어로 함량순을 요청하면 400이다`() {
         mvc.get("/api/products") { param("q", "고려은단"); param("sort", "amount") }.andExpect {
             status { isBadRequest() }
@@ -193,14 +207,14 @@ class ProductSearchApiTest(
         "R${seq++}", name, manufacturer, rawMaterial, status, parseStatus, reportedOn, basisCheck,
     )!!
 
-    private fun ingredient(productId: Long, ingredientName: String, dailyAmount: String?) {
+    private fun ingredient(productId: Long, ingredientName: String, dailyAmount: String?, unit: String = "mg") {
         jdbc.update(
             """
             INSERT INTO product_ingredient (product_id, ingredient_id, raw_name, amount, unit, basis_amount, basis_unit,
                                             extraction_method, parser_version, daily_amount, daily_unit)
             VALUES (?, (SELECT id FROM ingredient WHERE name = ?), ?, 1, 'mg', 1, '일', 'RULE', '1', ?, ?)
             """,
-            productId, ingredientName, ingredientName, dailyAmount?.let(::BigDecimal), dailyAmount?.let { "mg" },
+            productId, ingredientName, ingredientName, dailyAmount?.let(::BigDecimal), dailyAmount?.let { unit },
         )
     }
 }

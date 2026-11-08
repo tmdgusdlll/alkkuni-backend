@@ -6,6 +6,7 @@ import com.alkkuni.core.product.enums.BasisCheck
 import com.alkkuni.core.product.enums.ParseStatus
 import com.alkkuni.core.product.enums.ProductStatus
 import com.linecorp.kotlinjdsl.dsl.jpql.Jpql
+import com.linecorp.kotlinjdsl.querymodel.jpql.entity.Entity
 import com.linecorp.kotlinjdsl.querymodel.jpql.expression.Subquery
 import com.linecorp.kotlinjdsl.querymodel.jpql.path.Path
 import com.linecorp.kotlinjdsl.querymodel.jpql.predicate.Predicate
@@ -54,18 +55,12 @@ data class ProductExploreRow(
     val parseStatus: ParseStatus,
 )
 
-// 제품 하나의 성분 하나 함량. 같은 성분 행이 여러 개면 pickAmount 규칙으로 하나를 고른다.
-data class ExploreAmount(
-    val dailyAmount: BigDecimal?,
-    val dailyUnit: String?,
-)
-
 /**
  * 성분별 제품 목록. 선택 조건이 많고 EXISTS·NOT EXISTS가 반복돼 Kotlin JDSL로 만든다(PLANNING.md "검색·목록·비교 화면").
  * 원료 품목과 삭제된 제품은 뺀다.
  *
- * "같은 성분 행이 여러 개면 가장 큰 값 하나"(검색 API와 같은 규칙)를 주 단위 → 다른 단위 순으로 적용한다.
- * 정렬(JPQL 서브쿼리)과 응답 함량(pickAmount)이 같은 규칙을 쓰므로 둘을 이 파일에 둔다.
+ * 함량순 정렬 키는 검색 API(ProductSearchRepository)와 같다: 주 단위 값 → 다른 단위(단위 내림차순) 값 → 모르는 값.
+ * 같은 성분 행이 여러 개면 정렬에는 가장 큰 값을 쓰고, 응답에는 합치지 않고 모두 내보낸다(PLANNING.md "함량 표시 규칙").
  */
 @Repository
 class ProductExploreRepository(
@@ -89,10 +84,7 @@ class ProductExploreRepository(
                     .whereAnd(*predicates(cond))
                     .orderBy(
                         *when (sort) {
-                            ProductExploreSort.AMOUNT -> arrayOf(
-                                baseAmount(cond.base, mainUnit = true).desc().nullsLast(),
-                                baseAmount(cond.base, mainUnit = false).desc().nullsLast(),
-                            )
+                            ProductExploreSort.AMOUNT -> amountOrder(cond.base)
                             ProductExploreSort.LATEST -> arrayOf(path(Product::reportedOn).desc().nullsLast())
                         },
                         path(Product::id).desc(),
@@ -104,13 +96,11 @@ class ProductExploreRepository(
             },
         )
 
-    // 한 페이지 제품의 고른 성분 함량. (제품 id, 성분 id) → 함량. 행이 없으면 키가 없다.
-    fun amounts(productIds: Collection<Long>, bases: List<ExploreBase>): Map<Pair<Long, Long>, ExploreAmount> {
+    // 한 페이지 제품의 고른 성분 행. (제품 id, 성분 id) → 원문 성분표 순서의 행 목록. 행이 없으면 키가 없다.
+    fun amounts(productIds: Collection<Long>, ingredientIds: Collection<Long>): Map<Pair<Long, Long>, List<ProductIngredient>> {
         if (productIds.isEmpty()) return emptyMap()
-        val units = bases.associate { it.ingredientId to it.defaultUnit }
-        return productIngredientRepository.findAllByProductIdInAndIngredientIdIn(productIds, units.keys)
+        return productIngredientRepository.findAllByProductIdInAndIngredientIdInOrderById(productIds, ingredientIds)
             .groupBy { it.productId to requireNotNull(it.ingredientId) }
-            .mapValues { (key, rows) -> pickAmount(rows, units[key.second]) }
     }
 
     private fun Jpql.predicates(cond: ProductExploreCondition): Array<Predicate?> = arrayOf(
@@ -120,8 +110,13 @@ class ProductExploreRepository(
         *cond.ingredientIds.mapIndexed { i, id -> exists(hasIngredient("inc$i") { it.eq(id) }) }.toTypedArray(),
         cond.excludeIds.takeIf { it.isNotEmpty() }?.let { ids -> notExists(hasIngredient("exc") { it.`in`(ids) }) },
         cond.forms.takeIf { it.isNotEmpty() }?.let { path(Product::form).`in`(it) },
-        cond.min?.let { baseAmount(cond.base, mainUnit = true, alias = "rmin").ge(it) },
-        cond.max?.let { baseAmount(cond.base, mainUnit = true, alias = "rmax").le(it) },
+        // 범위는 주 단위 값에만 건다. 둘 다 있으면 서브쿼리 하나(between)로 계산한다.
+        when {
+            cond.min != null && cond.max != null -> mainAmount(cond.base, "rng").between(cond.min, cond.max)
+            cond.min != null -> mainAmount(cond.base, "rng").ge(cond.min)
+            cond.max != null -> mainAmount(cond.base, "rng").le(cond.max)
+            else -> null
+        },
     )
 
     private fun Jpql.hasIngredient(alias: String, ingredientMatch: (Path<Long>) -> Predicate): Subquery<Long> {
@@ -133,37 +128,49 @@ class ProductExploreRepository(
     }
 
     /**
-     * 기준 성분의 1일 함량(같은 성분 행이 여러 개면 최댓값).
-     * mainUnit이면 주 단위 행(주 단위가 없으면 모든 행), 아니면 주 단위가 아닌 행만 본다(주 단위가 없으면 항상 null).
-     * 함량순은 주 단위 값 → 다른 단위 값 순으로 정렬해, 단위가 다른 값끼리 섞여 비교되지 않게 한다.
+     * 함량순 정렬 키. 주 단위가 없으면(대부분의 성분) 단위를 가리지 않고 최댓값 하나로 정렬한다.
+     * 주 단위가 있으면 주 단위 최댓값 → 다른 단위의 단위(내림차순, 비타민 A면 mg RE 묶음 다음 mg 묶음) → 다른 단위 최댓값 순이다.
+     * 단위가 다른 값끼리 숫자로 비교되지 않게 묶음을 나눈다.
      */
-    private fun Jpql.baseAmount(base: ExploreBase, mainUnit: Boolean, alias: String = if (mainUnit) "amain" else "aother"): Subquery<BigDecimal> {
+    private fun Jpql.amountOrder(base: ExploreBase) = if (base.defaultUnit == null) {
+        arrayOf(mainAmount(base, "amain").desc().nullsLast())
+    } else {
+        arrayOf(
+            mainAmount(base, "amain").desc().nullsLast(),
+            otherUnit(base, "ounit").desc().nullsLast(),
+            // ponytail: 한 제품에 다른 단위가 두 종류 이상이면(예: mg RE와 mg 행이 같이 있음) 이 최댓값은 단위를 섞는다. 로컬에 드물어 그대로 둔다.
+            otherAmount(base, "oamt").desc().nullsLast(),
+        )
+    }
+
+    // 기준 성분의 주 단위 행(주 단위가 없으면 모든 행) 중 1일 함량 최댓값.
+    private fun Jpql.mainAmount(base: ExploreBase, alias: String): Subquery<BigDecimal> {
         val pi = entity(ProductIngredient::class, alias)
-        val unit = base.defaultUnit
-        val unitMatch = when {
-            unit == null && mainUnit -> null
-            // 주 단위가 없으면 "다른 단위" 묶음도 없다. 항상 거짓인 조건을 둔다.
-            unit == null -> pi(ProductIngredient::id).isNull()
-            mainUnit -> pi(ProductIngredient::dailyUnit).eq(unit)
-            else -> pi(ProductIngredient::dailyUnit).ne(unit)
-        }
         return select(max(pi(ProductIngredient::dailyAmount)))
             .from(pi)
             .whereAnd(
                 pi(ProductIngredient::productId).eq(path(Product::id)),
                 pi(ProductIngredient::ingredientId).eq(base.ingredientId),
-                unitMatch,
+                base.defaultUnit?.let { pi(ProductIngredient::dailyUnit).eq(it) },
             )
             .asSubquery()
     }
 
-    companion object {
-        // 주 단위 행의 최댓값, 없으면 다른 단위 행의 최댓값, 둘 다 없으면 단위만 있는 null 함량. baseAmount와 같은 규칙이다.
-        fun pickAmount(rows: List<ProductIngredient>, defaultUnit: String?): ExploreAmount {
-            val known = rows.filter { it.dailyAmount != null }
-            val main = known.filter { defaultUnit == null || it.dailyUnit == defaultUnit }
-            val best = (main.ifEmpty { known }).maxByOrNull { it.dailyAmount!! }
-            return ExploreAmount(best?.dailyAmount, best?.dailyUnit)
-        }
+    // 기준 성분의 주 단위가 아닌, 함량을 아는 행의 단위(최댓값)와 함량(최댓값). 주 단위가 있을 때만 부른다.
+    private fun Jpql.otherUnit(base: ExploreBase, alias: String): Subquery<String> {
+        val pi = entity(ProductIngredient::class, alias)
+        return select(max(pi(ProductIngredient::dailyUnit))).from(pi).whereAnd(*otherRows(pi, base)).asSubquery()
     }
+
+    private fun Jpql.otherAmount(base: ExploreBase, alias: String): Subquery<BigDecimal> {
+        val pi = entity(ProductIngredient::class, alias)
+        return select(max(pi(ProductIngredient::dailyAmount))).from(pi).whereAnd(*otherRows(pi, base)).asSubquery()
+    }
+
+    private fun Jpql.otherRows(pi: Entity<ProductIngredient>, base: ExploreBase) = arrayOf(
+        pi(ProductIngredient::productId).eq(path(Product::id)),
+        pi(ProductIngredient::ingredientId).eq(base.ingredientId),
+        pi(ProductIngredient::dailyUnit).ne(requireNotNull(base.defaultUnit)),
+        pi(ProductIngredient::dailyAmount).isNotNull(),
+    )
 }

@@ -57,7 +57,7 @@ class ProductExploreApiTest(
             jsonPath("$.data.items[*].id") { value(contains(both.toInt())) }
             // 고른 성분 순서대로 함량 열이 붙는다.
             jsonPath("$.data.items[0].amounts[*].ingredientId") { value(contains(id("아연").toInt(), id("셀레늄").toInt())) }
-            jsonPath("$.data.items[0].amounts[0].dailyAmount") { value(8) }
+            jsonPath("$.data.items[0].amounts[0].values[0].dailyAmount") { value(8) }
         }
     }
 
@@ -72,6 +72,11 @@ class ProductExploreApiTest(
         mvc.get("/api/products/explore") { param("ingredient", "${id("아연")}"); param("form", "정,캡슐") }.andExpect {
             jsonPath("$.data.totalCount") { value(2) }
             jsonPath("$.data.items[*].id") { value(containsInAnyOrder(tablet.toInt(), capsule.toInt())) }
+        }
+        // 제형은 성분 개수 제한(5개)과 별개다. 6개를 골라도 된다.
+        mvc.get("/api/products/explore") { param("ingredient", "${id("아연")}"); param("form", "정,캡슐,분말,액상,환,과립") }.andExpect {
+            status { isOk() }
+            jsonPath("$.data.totalCount") { value(3) }
         }
     }
 
@@ -89,22 +94,46 @@ class ProductExploreApiTest(
                 value(contains(dfeHigh.toInt(), dfeLow.toInt(), mgHigh.toInt(), mgLow.toInt(), unknown.toInt()))
             }
             jsonPath("$.data.ingredients[0].defaultUnit") { value("mg DFE") }
-            jsonPath("$.data.items[2].amounts[0].dailyUnit") { value("mg") }
+            jsonPath("$.data.items[2].amounts[0].values[0].dailyUnit") { value("mg") }
         }
     }
 
     @Test
-    fun `같은 성분 행이 여러 개면 주 단위 행의 가장 큰 값을 쓴다`() {
-        val p = product("A").also {
+    fun `같은 성분 행이 여러 개면 정렬은 주 단위 최댓값으로 하고 응답에는 모두 원문 순서로 낸다`() {
+        // 주 단위 최댓값은 0.3이다. mg 행 0.9가 커도 0.5 mg DFE 제품보다 뒤에 온다.
+        val multi = product("A").also {
             has(it, "엽산", "0.2", "mg DFE")
             has(it, "엽산", "0.9", "mg")
             has(it, "엽산", "0.3", "mg DFE")
         }
+        val single = product("B").also { has(it, "엽산", "0.5", "mg DFE") }
 
         mvc.get("/api/products/explore") { param("ingredient", "${id("엽산")}") }.andExpect {
-            jsonPath("$.data.items[0].id") { value(p.toInt()) }
-            jsonPath("$.data.items[0].amounts[0].dailyAmount") { value(0.3) }
-            jsonPath("$.data.items[0].amounts[0].dailyUnit") { value("mg DFE") }
+            jsonPath("$.data.items[*].id") { value(contains(single.toInt(), multi.toInt())) }
+            jsonPath("$.data.items[1].amounts[0].values[*].dailyAmount") { value(contains(0.2, 0.9, 0.3)) }
+        }
+    }
+
+    @Test
+    fun `1일 함량을 모르는 행은 원문 값을 함께 낸다`() {
+        product("A").also { has(it, "아연", null) }
+
+        mvc.get("/api/products/explore") { param("ingredient", "${id("아연")}") }.andExpect {
+            jsonPath("$.data.items[0].amounts[0].values[0].dailyAmount") { value(null as Any?) }
+            jsonPath("$.data.items[0].amounts[0].values[0].amount") { value(1) }
+            jsonPath("$.data.items[0].amounts[0].values[0].unit") { value("mg") }
+        }
+    }
+
+    @Test
+    fun `다른 단위 묶음 안에서는 단위별로 나눠 정렬한다`() {
+        // 비타민 A 주 단위는 mg RAE. mg RE와 mg는 서로 비교하지 않고 단위 내림차순(mg RE → mg)으로 묶는다.
+        val re = product("A").also { has(it, "비타민 A", "0.7", "mg RE") }
+        val mg = product("B").also { has(it, "비타민 A", "1.0", "mg") }
+        val rae = product("C").also { has(it, "비타민 A", "0.1", "mg RAE") }
+
+        mvc.get("/api/products/explore") { param("ingredient", "${id("비타민 A")}") }.andExpect {
+            jsonPath("$.data.items[*].id") { value(contains(rae.toInt(), re.toInt(), mg.toInt())) }
         }
     }
 
@@ -175,6 +204,10 @@ class ProductExploreApiTest(
         expectField("sort", "ingredient" to "$zinc", "sort" to "popular")
         expectField("sort", "ingredient" to "$zinc", "sort" to "amount:${id("철")}")
         expectField("min", "ingredient" to "$zinc", "min" to "5", "max" to "1")
+        // PostgreSQL numeric을 넘는 값이 DB까지 가 500이 되지 않는다.
+        mvc.get("/api/products/explore") { param("ingredient", "$zinc"); param("min", "1e999999999") }.andExpect {
+            status { isBadRequest() }
+        }
     }
 
     @Test

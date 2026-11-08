@@ -37,7 +37,7 @@ class ProductExploreService(
         if (ingredientIds.any { it in excludeIds }) invalid("exclude", "고른 성분은 제외할 수 없습니다.")
         if (min != null && max != null && min > max) invalid("min", "최솟값이 최댓값보다 클 수 없습니다.")
         val cleanForms = forms.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
-        if (cleanForms.size > MAX_IDS) invalid("form", "제형은 ${MAX_IDS}개까지 고를 수 있습니다.")
+        if (cleanForms.size > MAX_FORMS) invalid("form", "제형은 ${MAX_FORMS}개까지 고를 수 있습니다.")
 
         val found = ingredientRepository.findAllById(ingredientIds + excludeIds).associateBy { requireNotNull(it.id) }
         (ingredientIds + excludeIds).firstOrNull { it !in found }?.let { invalid(if (it in ingredientIds) "ingredient" else "exclude", "없는 성분입니다: $it") }
@@ -49,12 +49,14 @@ class ProductExploreService(
         val cond = ProductExploreCondition(ingredientIds, excludeIds, cleanForms, base, min, max)
 
         val result = exploreRepository.find(cond, searchSort, page, size)
-        val amounts = exploreRepository.amounts(result.content.map { it.id }, bases)
+        val amounts = exploreRepository.amounts(result.content.map { it.id }, ingredientIds)
         return ProductExploreResponse(
             totalCount = result.totalElements,
             ingredients = ingredients.map { it.toExploreIngredient() },
             baseIngredientId = baseId,
-            items = result.content.map { row -> row.toExploreItem(ingredientIds.map { amounts[row.id to it].toItemAmount(it) }) },
+            items = result.content.map { row ->
+                row.toExploreItem(ingredientIds.map { id -> ExploreItemAmount(id, amounts[row.id to id].orEmpty().map { it.toCompareAmount() }) })
+            },
         )
     }
 
@@ -82,7 +84,10 @@ class ProductExploreService(
         throw ApiException(ErrorCode.INVALID_INPUT, listOf(ErrorDetail(field, reason)))
 
     companion object {
-        // 고른 성분·제외 성분·제형 각각의 최대 개수. 성분마다 EXISTS가 하나씩 붙는다.
+        // 고른 성분·제외 성분 각각의 최대 개수. 성분마다 EXISTS가 하나씩 붙는다.
         private const val MAX_IDS = 5
+
+        // 제형은 IN 하나라 비용과 상관없다. 제형 코드(로컬 14종)를 모두 골라도 되게 두고, 터무니없이 긴 목록만 막는다.
+        private const val MAX_FORMS = 20
     }
 }
