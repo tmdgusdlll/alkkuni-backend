@@ -33,8 +33,17 @@ data class ExploreBase(
 )
 
 /**
+ * "기준 충족" 필터의 성분 하나. units(Ingredient.comparableUnits) 중 한 단위의 1일 함량이 amount 이상인 행이 있어야 한다.
+ */
+data class ExploreReference(
+    val ingredientId: Long,
+    val amount: BigDecimal,
+    val units: List<String>,
+)
+
+/**
  * 성분별 제품 목록 조건. ingredientIds는 모두 든(AND) 제품, excludeIds는 하나라도 든 제품을 뺀다.
- * forms가 비어 있으면 제형을 가리지 않는다.
+ * forms가 비어 있으면 제형을 가리지 않는다. references가 비어 있으면 기준 충족으로 거르지 않는다.
  */
 data class ProductExploreCondition(
     val ingredientIds: List<Long>,
@@ -43,6 +52,7 @@ data class ProductExploreCondition(
     val base: ExploreBase,
     val min: BigDecimal?,
     val max: BigDecimal?,
+    val references: List<ExploreReference> = emptyList(),
 )
 
 data class ProductExploreRow(
@@ -110,6 +120,8 @@ class ProductExploreRepository(
         *cond.ingredientIds.mapIndexed { i, id -> exists(hasIngredient("inc$i") { it.eq(id) }) }.toTypedArray(),
         cond.excludeIds.takeIf { it.isNotEmpty() }?.let { ids -> notExists(hasIngredient("exc") { it.`in`(ids) }) },
         cond.forms.takeIf { it.isNotEmpty() }?.let { path(Product::form).`in`(it) },
+        // 기준 충족: basisCheck는 보지 않는다. "표시 기준량" 제품을 빼면 원료 제외 제품의 77%가 사라진다(PROGRESS.md).
+        *cond.references.mapIndexed { i, ref -> exists(meetsReference("ref$i", ref)) }.toTypedArray(),
         // 범위는 주 단위 값에만 건다. 둘 다 있으면 서브쿼리 하나(between)로 계산한다.
         when {
             cond.min != null && cond.max != null -> mainAmount(cond.base, "rng").between(cond.min, cond.max)
@@ -124,6 +136,20 @@ class ProductExploreRepository(
         return select(pi(ProductIngredient::id))
             .from(pi)
             .where(and(pi(ProductIngredient::productId).eq(path(Product::id)), ingredientMatch(pi(ProductIngredient::ingredientId))))
+            .asSubquery()
+    }
+
+    // 기준 성분 행 중 비교 가능한 단위이고 1일 함량이 기준값 이상인 행. 같은 성분 행이 여러 개면 하나만 넘어도 된다.
+    private fun Jpql.meetsReference(alias: String, ref: ExploreReference): Subquery<Long> {
+        val pi = entity(ProductIngredient::class, alias)
+        return select(pi(ProductIngredient::id))
+            .from(pi)
+            .whereAnd(
+                pi(ProductIngredient::productId).eq(path(Product::id)),
+                pi(ProductIngredient::ingredientId).eq(ref.ingredientId),
+                pi(ProductIngredient::dailyUnit).`in`(ref.units),
+                pi(ProductIngredient::dailyAmount).ge(ref.amount),
+            )
             .asSubquery()
     }
 

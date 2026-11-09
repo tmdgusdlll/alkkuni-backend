@@ -5,6 +5,7 @@ import com.alkkuni.api.common.ErrorCode
 import com.alkkuni.api.common.ErrorDetail
 import com.alkkuni.core.ingredient.repository.IngredientRepository
 import com.alkkuni.core.product.repository.ExploreBase
+import com.alkkuni.core.product.repository.ExploreReference
 import com.alkkuni.core.product.repository.ProductExploreCondition
 import com.alkkuni.core.product.repository.ProductExploreRepository
 import com.alkkuni.core.product.repository.ProductExploreSort
@@ -21,6 +22,8 @@ class ProductExploreService(
      * 고른 성분이 모두 든 제품 목록.
      * - sort: amount(첫 성분 기준), amount:{성분 id}, latest. 함량 범위(min·max)는 기준 성분(amount:{id}의 성분, 없으면 첫 성분)에 건다.
      * - 목록 값("ingredient=5,")의 빈 원소는 null로 바인딩된다. 비교 API처럼 Long?로 받아 거절한다.
+     * - meetsReference: 고른 성분 모두 1일 함량이 기준값 이상인 제품만. 기준값이 없는 성분이 있으면 거절한다
+     *   (조용히 무시하면 확인하지 않은 성분까지 "충족"으로 보인다).
      */
     fun explore(
         rawIngredientIds: List<Long?>,
@@ -28,6 +31,7 @@ class ProductExploreService(
         forms: List<String>,
         min: BigDecimal?,
         max: BigDecimal?,
+        meetsReference: Boolean,
         sort: String,
         page: Int,
         size: Int,
@@ -46,7 +50,15 @@ class ProductExploreService(
         val (searchSort, baseId) = parseSort(sort, ingredientIds)
         val bases = ingredients.map { ExploreBase(requireNotNull(it.id), it.defaultUnit) }
         val base = bases.first { it.ingredientId == baseId }
-        val cond = ProductExploreCondition(ingredientIds, excludeIds, cleanForms, base, min, max)
+        val references = if (meetsReference) {
+            ingredients.map { ing ->
+                val amount = ing.referenceAmount ?: invalid("meetsReference", "기준값이 없는 성분입니다: ${ing.displayName}")
+                ExploreReference(requireNotNull(ing.id), amount, ing.comparableUnits())
+            }
+        } else {
+            emptyList()
+        }
+        val cond = ProductExploreCondition(ingredientIds, excludeIds, cleanForms, base, min, max, references)
 
         val result = exploreRepository.find(cond, searchSort, page, size)
         val amounts = exploreRepository.amounts(result.content.map { it.id }, ingredientIds)

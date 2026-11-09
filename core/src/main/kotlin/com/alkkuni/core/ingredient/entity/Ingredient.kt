@@ -66,15 +66,19 @@ class Ingredient(
      */
     fun exceedsUpperLimit(dailyAmount: BigDecimal?, dailyUnit: String?): Boolean {
         val limit = upperLimit ?: return false
-        if (dailyAmount == null || dailyUnit == null || !comparable(dailyUnit)) return false
+        if (dailyAmount == null || dailyUnit == null || dailyUnit !in comparableUnits()) return false
         return dailyAmount > limit * UPPER_LIMIT_MARGIN
     }
 
+    /**
+     * referenceAmount·upperLimit과 비교할 수 있는 1일 함량 단위. 기준 단위와, 환산 표기만 뺀 질량 단위("mg DFE" → "mg").
+     * 상한 판정과 성분별 목록의 "기준 충족" 필터가 같은 규칙을 쓴다. 기준 단위가 없으면 빈 목록이다.
+     */
     // ponytail: 표기 없는 "mg"를 환산 단위와 같게 본다. 나이아신(1mg = 1mg NE)·비타민 E·A(레티놀)는 같고,
-    // 엽산 mg(보충제 엽산)은 상한이 1.0인데 1.7(DFE)로 비교해 느슨하다. 2배 기준의 오류 탐지라 둔다(로컬에서 엽산 120mg 1건 잡힘).
-    private fun comparable(dailyUnit: String): Boolean {
-        val unit = referenceUnit ?: return false
-        return dailyUnit == unit || dailyUnit == unit.substringBefore(' ')
+    // 엽산 mg(보충제 엽산)은 실제 DFE가 1.7배라 상한 판정은 느슨하고 기준 충족은 보수적이다(로컬에서 엽산 120mg 1건 잡힘).
+    fun comparableUnits(): List<String> {
+        val unit = referenceUnit ?: return emptyList()
+        return listOf(unit, unit.substringBefore(' ')).distinct()
     }
 
     companion object {
