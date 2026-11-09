@@ -72,21 +72,23 @@ class Ingredient(
     }
 
     /**
-     * 1일 함량이 기준값 이상이면 true. 상한 2배를 넘는 값은 오류 의심이라 false다(성분별 목록의 "기준 충족" 필터와 같은 규칙).
-     * 기준값이 없거나 단위를 비교할 수 없으면 null(판정 안 함).
+     * 1일 함량이 기준값 이상이면 true, 미만이면 false.
+     * 판정하지 않으면 null: 기준값이 없거나 단위를 비교할 수 없을 때, 상한 2배를 넘는 오류 의심 값일 때(false면 "기준 미달"로 보인다).
+     * 성분별 목록의 "기준 충족" 필터는 이 값이 true인 행만 근거로 쓴다(같은 규칙).
      */
     fun meetsReference(dailyAmount: BigDecimal?, dailyUnit: String?): Boolean? {
         val reference = referenceAmount
         if (dailyAmount == null || reference == null || dailyUnit !in comparableUnits()) return null
-        val suspect = suspectAbove()
-        return dailyAmount >= reference && (suspect == null || dailyAmount <= suspect)
+        if (exceedsUpperLimit(dailyAmount, dailyUnit)) return null
+        return dailyAmount >= reference
     }
 
     // 기준값 대비 %(소수점 버림). 올리면 미충족 값이 100%로 보인다. 판정할 수 없으면 null.
     fun referencePercent(dailyAmount: BigDecimal?, dailyUnit: String?): Int? {
         val reference = referenceAmount
         if (dailyAmount == null || reference == null || dailyUnit !in comparableUnits()) return null
-        return dailyAmount.multiply(HUNDRED).divide(reference, 0, RoundingMode.DOWN).toInt()
+        // 파싱 오류 값은 Int 범위를 넘을 수 있다. toInt()는 넘치면 음수가 되므로 자른다.
+        return dailyAmount.multiply(HUNDRED).divide(reference, 0, RoundingMode.DOWN).min(MAX_PERCENT).toInt()
     }
 
     // 이 값을 넘는 1일 함량(상한 2배)은 표기·파싱 오류로 의심한다. 상한이 없으면 null.
@@ -108,5 +110,6 @@ class Ingredient(
         // 기능성 원료 상한(V12)으로 13개가 늘었다. 기준을 좁힐 때 다시 센다.
         private val UPPER_LIMIT_MARGIN = BigDecimal(2)
         private val HUNDRED = BigDecimal(100)
+        private val MAX_PERCENT = BigDecimal(Int.MAX_VALUE)
     }
 }

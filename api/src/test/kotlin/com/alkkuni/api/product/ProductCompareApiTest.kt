@@ -67,7 +67,7 @@ class ProductCompareApiTest(
             jsonPath("$.data.ingredients[0].referenceUnit") { value("mg") }
             jsonPath("$.data.ingredients[0].values[0][0].referencePercent") { value(141) }
             jsonPath("$.data.ingredients[0].values[0][0].meetsReference") { value(true) }
-            jsonPath("$.data.ingredients[0].values[1][0].meetsReference") { value(false) }
+            jsonPath("$.data.ingredients[0].values[1][0].meetsReference") { value(null as Any?) }
             jsonPath("$.data.ingredients[0].values[1][0].exceedsUpperLimit") { value(true) }
         }
     }

@@ -43,7 +43,9 @@ data class CompareAmount(
     val dailyUnit: String?,
     // 기준값 대비 %(소수점 버림). 기준값이 없거나 단위를 비교할 수 없으면 null이고 화면은 표시하지 않는다.
     val referencePercent: Int?,
-    // 기준값 이상이면 true(상한 2배 초과는 false). 판정할 수 없으면 null. "표시 기준량" 함량도 판정한다(basisCheck로 구분).
+    // 기준값 이상이면 true, 미만이면 false. 판정하지 않으면 null(기준값 없음, 비교 못 하는 단위, 상한 2배 초과 오류 의심).
+    // 행마다 따로 판정한다. 같은 성분 행이 여러 개(멀티팩 등)여도 합치지 않는다(PLANNING.md "함량 표시 규칙").
+    // "표시 기준량" 함량도 판정한다(basisCheck로 구분).
     val meetsReference: Boolean?,
     // 상한 2배 초과. 원문 오기·파싱 오류 의심으로 경고를 단다.
     val exceedsUpperLimit: Boolean,

@@ -84,7 +84,7 @@ class ProductDetailApiTest(
 
         mvc.get("/api/products/$id").andExpect {
             jsonPath("$.data.ingredients[*].referencePercent") { value(contains(50, 100, 1176, null)) }
-            jsonPath("$.data.ingredients[*].meetsReference") { value(contains(false, true, false, null)) }
+            jsonPath("$.data.ingredients[*].meetsReference") { value(contains(false, true, null, null)) }
             jsonPath("$.data.ingredients[*].exceedsUpperLimit") { value(contains(false, false, true, false)) }
             // 화면이 "기준 8.5mg"을 함께 보여준다. 사전에 없는 성분은 null
             jsonPath("$.data.ingredients[0].referenceAmount") { value(8.5) }

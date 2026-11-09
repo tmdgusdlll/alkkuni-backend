@@ -56,9 +56,9 @@ class IngredientTest {
     }
 
     @Test
-    fun `상한 2배를 넘으면 기준 이상이어도 충족이 아니다`() {
-        // 성분별 목록의 "기준 충족" 필터와 같은 규칙. 퍼센트는 그대로 보여준다
-        assertEquals(false, folate.meetsReference(BigDecimal("120"), "mg"))
+    fun `상한 2배를 넘으면 충족을 판정하지 않는다`() {
+        // 오류 의심 값을 false로 주면 30000%가 "기준 미달"로 보인다. 필터는 이 행을 충족 근거로 쓰지 않는다(true가 아님)
+        assertNull(folate.meetsReference(BigDecimal("120"), "mg"))
         assertEquals(30000, folate.referencePercent(BigDecimal("120"), "mg"))
         assertEquals(true, folate.meetsReference(BigDecimal("3.4"), "mg DFE"))
     }
@@ -70,5 +70,12 @@ class IngredientTest {
         assertNull(noReference.referencePercent(BigDecimal("20000"), "mg"))
         assertNull(folate.meetsReference(BigDecimal("1"), "CFU"))
         assertNull(folate.referencePercent(null, null))
+    }
+
+    @Test
+    fun `퍼센트가 Int 범위를 넘으면 최댓값으로 자른다`() {
+        // 파싱 오류로 기준값의 수천만 배가 들어와도 음수로 넘치지 않는다
+        val b12 = Ingredient("비타민 B12", referenceAmount = BigDecimal("0.0024"), referenceUnit = "mg")
+        assertEquals(Int.MAX_VALUE, b12.referencePercent(BigDecimal("60000"), "mg"))
     }
 }
