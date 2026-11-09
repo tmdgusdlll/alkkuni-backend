@@ -7,6 +7,7 @@ import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
 import jakarta.persistence.Table
 import java.math.BigDecimal
+import java.math.RoundingMode
 
 @Entity
 @Table(name = "ingredient")
@@ -54,7 +55,7 @@ class Ingredient(
     var referenceUnit: String? = referenceUnit
         protected set
 
-    // 상한섭취량(성인). 없으면 null.
+    // 상한. 비타민·무기질은 상한섭취량(성인), 기능성 원료는 고시 1일 섭취량 최고값(V12). 없으면 null.
     var upperLimit: BigDecimal? = upperLimit
         protected set
 
@@ -68,6 +69,24 @@ class Ingredient(
         val threshold = suspectAbove() ?: return false
         if (dailyAmount == null || dailyUnit == null || dailyUnit !in comparableUnits()) return false
         return dailyAmount > threshold
+    }
+
+    /**
+     * 1일 함량이 기준값 이상이면 true. 상한 2배를 넘는 값은 오류 의심이라 false다(성분별 목록의 "기준 충족" 필터와 같은 규칙).
+     * 기준값이 없거나 단위를 비교할 수 없으면 null(판정 안 함).
+     */
+    fun meetsReference(dailyAmount: BigDecimal?, dailyUnit: String?): Boolean? {
+        val reference = referenceAmount
+        if (dailyAmount == null || reference == null || dailyUnit !in comparableUnits()) return null
+        val suspect = suspectAbove()
+        return dailyAmount >= reference && (suspect == null || dailyAmount <= suspect)
+    }
+
+    // 기준값 대비 %(소수점 버림). 올리면 미충족 값이 100%로 보인다. 판정할 수 없으면 null.
+    fun referencePercent(dailyAmount: BigDecimal?, dailyUnit: String?): Int? {
+        val reference = referenceAmount
+        if (dailyAmount == null || reference == null || dailyUnit !in comparableUnits()) return null
+        return dailyAmount.multiply(HUNDRED).divide(reference, 0, RoundingMode.DOWN).toInt()
     }
 
     // 이 값을 넘는 1일 함량(상한 2배)은 표기·파싱 오류로 의심한다. 상한이 없으면 null.
@@ -86,7 +105,8 @@ class Ingredient(
 
     companion object {
         // ponytail: 상한만 넘어도 잡으면 고함량 정상 제품(비타민 D 5,000IU, 비타민 C 3,000mg 등) 790개가 걸려 2배로 둔다(로컬 25개).
-        // 기능성 원료 상한(고시 최고량)을 채우거나 기준을 좁힐 때 다시 센다.
+        // 기능성 원료 상한(V12)으로 13개가 늘었다. 기준을 좁힐 때 다시 센다.
         private val UPPER_LIMIT_MARGIN = BigDecimal(2)
+        private val HUNDRED = BigDecimal(100)
     }
 }

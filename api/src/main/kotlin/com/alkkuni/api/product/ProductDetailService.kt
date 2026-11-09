@@ -23,11 +23,11 @@ class ProductDetailService(
             ?: throw ApiException(ErrorCode.PRODUCT_NOT_FOUND)
 
         val rows = productIngredientRepository.findAllByProductIdOrderById(id)
-        val names = ingredientRepository.findAllById(rows.mapNotNull { it.ingredientId }.toSet()).associate { it.id to it.displayName }
+        val ingredients = ingredientRepository.findAllById(rows.mapNotNull { it.ingredientId }.toSet()).associateBy { it.id }
         val recalls = recallRepository.findAllByReportNoAndProductTypeOrderById(product.reportNo, HEALTH_FUNCTIONAL_FOOD)
 
         return product.toDetailResponse(
-            ingredients = rows.map { it.toDetailIngredient(it.ingredientId?.let(names::get)) },
+            ingredients = rows.map { it.toDetailIngredient(it.ingredientId?.let(ingredients::get)) },
             recalls = recalls.map { it.toDetailRecall() },
         )
     }

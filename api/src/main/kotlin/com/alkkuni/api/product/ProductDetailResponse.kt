@@ -1,5 +1,6 @@
 package com.alkkuni.api.product
 
+import com.alkkuni.core.ingredient.entity.Ingredient
 import com.alkkuni.core.product.entity.Product
 import com.alkkuni.core.product.entity.ProductIngredient
 import com.alkkuni.core.product.enums.BasisCheck
@@ -35,9 +36,18 @@ data class DetailIngredient(
     val ingredientId: Long?,
     val name: String,
     val rawName: String,
+    // 1일 기준값과 단위(성분 목록 API와 같음). 기준값이 없는 성분이나 사전에 없는 성분은 null이다.
+    val referenceAmount: BigDecimal?,
+    val referenceUnit: String?,
     // 1일 함량(단위 통일). 계산할 수 없으면 null이고 화면은 원문 값(amount/basis)을 보여준다.
     val dailyAmount: BigDecimal?,
     val dailyUnit: String?,
+    // 기준값 대비 %(소수점 버림). 기준값이 없거나 단위를 비교할 수 없으면 null이고 화면은 표시하지 않는다.
+    val referencePercent: Int?,
+    // 기준값 이상이면 true(상한 2배 초과는 false). 판정할 수 없으면 null. "표시 기준량" 함량도 판정한다(basisCheck로 구분).
+    val meetsReference: Boolean?,
+    // 상한 2배 초과. 원문 오기·파싱 오류 의심으로 경고를 단다.
+    val exceedsUpperLimit: Boolean,
     val amount: BigDecimal,
     val unit: String,
     val basisAmount: BigDecimal,
@@ -70,12 +80,17 @@ fun Product.toDetailResponse(ingredients: List<DetailIngredient>, recalls: List<
     recalls = recalls,
 )
 
-fun ProductIngredient.toDetailIngredient(name: String?) = DetailIngredient(
+fun ProductIngredient.toDetailIngredient(ingredient: Ingredient?) = DetailIngredient(
     ingredientId = ingredientId,
-    name = name ?: rawName,
+    name = ingredient?.displayName ?: rawName,
     rawName = rawName,
+    referenceAmount = ingredient?.referenceAmount,
+    referenceUnit = ingredient?.referenceUnit,
     dailyAmount = dailyAmount,
     dailyUnit = dailyUnit,
+    referencePercent = ingredient?.referencePercent(dailyAmount, dailyUnit),
+    meetsReference = ingredient?.meetsReference(dailyAmount, dailyUnit),
+    exceedsUpperLimit = ingredient?.exceedsUpperLimit(dailyAmount, dailyUnit) ?: false,
     amount = amount,
     unit = unit,
     basisAmount = basisAmount,

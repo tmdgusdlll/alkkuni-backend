@@ -4,6 +4,7 @@ import com.alkkuni.core.ingredient.entity.Ingredient
 import com.alkkuni.core.product.enums.BasisCheck
 import com.alkkuni.core.product.enums.ParseStatus
 import com.alkkuni.core.product.repository.ProductExploreRow
+import java.math.BigDecimal
 import java.time.LocalDate
 
 data class ProductExploreResponse(
@@ -20,6 +21,9 @@ data class ExploreIngredient(
     val name: String,
     // 주 단위. 함량의 dailyUnit이 이 값과 다르면 "다른 단위 표기"라 주 단위 값과 비교할 수 없다. null이면 단위가 섞이지 않은 성분이다.
     val defaultUnit: String?,
+    // 1일 기준값과 단위(성분 목록 API와 같음). 기준값이 없는 성분이나 사전에 없는 성분은 null이다.
+    val referenceAmount: BigDecimal?,
+    val referenceUnit: String?,
 )
 
 data class ProductExploreItem(
@@ -41,7 +45,13 @@ data class ExploreItemAmount(
     val values: List<CompareAmount>,
 )
 
-fun Ingredient.toExploreIngredient() = ExploreIngredient(id = requireNotNull(id), name = displayName, defaultUnit = defaultUnit)
+fun Ingredient.toExploreIngredient() = ExploreIngredient(
+    id = requireNotNull(id),
+    name = displayName,
+    defaultUnit = defaultUnit,
+    referenceAmount = referenceAmount,
+    referenceUnit = referenceUnit,
+)
 
 fun ProductExploreRow.toExploreItem(amounts: List<ExploreItemAmount>) = ProductExploreItem(
     id = id,
