@@ -57,6 +57,22 @@ class ProductCompareApiTest(
     }
 
     @Test
+    fun `함량 칸마다 기준값 판정을 붙인다`() {
+        // 아연 기준 8.5mg, 상한 35mg. 상세·목록 API와 같은 Ingredient 판정을 쓴다
+        val a = product("A").also { ingredient(it, "아연", "12") }
+        val b = product("B").also { ingredient(it, "아연", "80") }
+
+        mvc.get("/api/products/compare") { param("ids", "$a,$b") }.andExpect {
+            jsonPath("$.data.ingredients[0].referenceAmount") { value(8.5) }
+            jsonPath("$.data.ingredients[0].referenceUnit") { value("mg") }
+            jsonPath("$.data.ingredients[0].values[0][0].referencePercent") { value(141) }
+            jsonPath("$.data.ingredients[0].values[0][0].meetsReference") { value(true) }
+            jsonPath("$.data.ingredients[0].values[1][0].meetsReference") { value(null as Any?) }
+            jsonPath("$.data.ingredients[0].values[1][0].exceedsUpperLimit") { value(true) }
+        }
+    }
+
+    @Test
     fun `같은 성분 행이 여러 개면 합치지 않고 모두 내보낸다`() {
         // 멀티팩(구성품별 합산)과 수출국별 규격(하나만)을 원문 없이 구분할 수 없어 판단을 화면에 맡긴다.
         val pack = product("멀티팩").also { ingredient(it, "아연", "5.95"); ingredient(it, "아연", "2.55") }

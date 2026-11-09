@@ -195,6 +195,20 @@ class ProductExploreApiTest(
     }
 
     @Test
+    fun `함량 행의 충족 여부는 기준 충족 필터와 같은 규칙이고 오류 의심 값은 판정하지 않는다`() {
+        val ok = product("A").also { has(it, "아연", "9") }
+        val suspect = product("B").also { has(it, "아연", "80") }
+
+        mvc.get("/api/products/explore") { param("ingredient", "${id("아연")}") }.andExpect {
+            jsonPath("$.data.ingredients[0].referenceAmount") { value(8.5) }
+            jsonPath("$.data.ingredients[0].referenceUnit") { value("mg") }
+            jsonPath("$.data.items[?(@.id == $ok)].amounts[0].values[0].meetsReference") { value(contains(true)) }
+            jsonPath("$.data.items[?(@.id == $suspect)].amounts[0].values[0].meetsReference") { value(contains(null as Any?)) }
+            jsonPath("$.data.items[?(@.id == $suspect)].amounts[0].values[0].exceedsUpperLimit") { value(contains(true)) }
+        }
+    }
+
+    @Test
     fun `기준값이 없는 성분을 고르고 기준 충족을 켜면 400이다`() {
         val noRef = jdbc.queryForObject("SELECT id FROM ingredient WHERE reference_amount IS NULL ORDER BY id LIMIT 1", Long::class.java)!!
 

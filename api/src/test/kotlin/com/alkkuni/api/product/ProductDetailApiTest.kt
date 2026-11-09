@@ -74,6 +74,26 @@ class ProductDetailApiTest(
     }
 
     @Test
+    fun `함량마다 기준 대비 %, 충족 여부, 상한 초과를 계산한다`() {
+        // 아연(V11): 기준 8.5mg, 상한 35mg(2배 70mg 초과면 오류 의심)
+        val id = product("A")
+        ingredient(id, "아연", "4.25")
+        ingredient(id, "아연", "8.5")
+        ingredient(id, "아연", "100")
+        ingredient(id, null, "3", rawName = "미확인성분X")
+
+        mvc.get("/api/products/$id").andExpect {
+            jsonPath("$.data.ingredients[*].referencePercent") { value(contains(50, 100, 1176, null)) }
+            jsonPath("$.data.ingredients[*].meetsReference") { value(contains(false, true, null, null)) }
+            jsonPath("$.data.ingredients[*].exceedsUpperLimit") { value(contains(false, false, true, false)) }
+            // 화면이 "기준 8.5mg"을 함께 보여준다. 사전에 없는 성분은 null
+            jsonPath("$.data.ingredients[0].referenceAmount") { value(8.5) }
+            jsonPath("$.data.ingredients[0].referenceUnit") { value("mg") }
+            jsonPath("$.data.ingredients[3].referenceAmount") { value(null as Any?) }
+        }
+    }
+
+    @Test
     fun `신고번호가 정확히 같은 회수만 붙는다`() {
         val id = product("메타그린 슬림업", reportNo = "20040017031282")
         recall("20040017031282", "메타그린 슬림업", "초산에틸 검출")

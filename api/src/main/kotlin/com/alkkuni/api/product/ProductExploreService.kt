@@ -67,7 +67,7 @@ class ProductExploreService(
             ingredients = ingredients.map { it.toExploreIngredient() },
             baseIngredientId = baseId,
             items = result.content.map { row ->
-                row.toExploreItem(ingredientIds.map { id -> ExploreItemAmount(id, amounts[row.id to id].orEmpty().map { it.toCompareAmount() }) })
+                row.toExploreItem(ingredientIds.map { id -> ExploreItemAmount(id, amounts[row.id to id].orEmpty().map { it.toCompareAmount(found.getValue(id)) }) })
             },
         )
     }

@@ -29,15 +29,18 @@ class ProductCompareService(
         val products = ids.map { found[it] ?: throw ApiException(ErrorCode.PRODUCT_NOT_FOUND, listOf(ErrorDetail("ids", "제품 ${it}을(를) 찾을 수 없습니다."))) }
 
         val rows = productIngredientRepository.findAllByProductIdInOrderById(ids)
-        val names = ingredientRepository.findAllById(rows.mapNotNull { it.ingredientId }.toSet()).associate { it.id to it.displayName }
+        val dict = ingredientRepository.findAllById(rows.mapNotNull { it.ingredientId }.toSet()).associateBy { it.id }
         // 사전에 연결된 성분은 id로, 없으면 사전 조회와 같은 키(IngredientName.normalize)로 묶는다. groupBy는 처음 나온 순서를 지킨다.
         val ingredients = rows.groupBy { it.ingredientId to (if (it.ingredientId == null) IngredientName.normalize(it.rawName) else null) }
             .map { (key, group) ->
                 val byProduct = group.groupBy { it.productId }
+                val ingredient = key.first?.let(dict::get)
                 CompareIngredient(
                     ingredientId = key.first,
-                    name = key.first?.let(names::get) ?: group.first().rawName,
-                    values = ids.map { id -> byProduct[id].orEmpty().map { it.toCompareAmount() } },
+                    name = ingredient?.displayName ?: group.first().rawName,
+                    referenceAmount = ingredient?.referenceAmount,
+                    referenceUnit = ingredient?.referenceUnit,
+                    values = ids.map { id -> byProduct[id].orEmpty().map { it.toCompareAmount(ingredient) } },
                 )
             }
             // 여러 제품에 든 성분 먼저, 같으면 앞 열 제품의 성분 먼저. 정렬이 안정적이라 그 안은 성분표 순서다.
