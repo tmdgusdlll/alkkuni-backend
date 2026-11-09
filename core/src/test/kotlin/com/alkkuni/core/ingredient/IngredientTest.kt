@@ -13,7 +13,6 @@ class IngredientTest {
 
     @Test
     fun `상한의 2배를 넘으면 초과다`() {
-        // 로컬 데이터의 실제 오류 값(엽산 120mg DFE)
         assertTrue(folate.exceedsUpperLimit(BigDecimal("120"), "mg DFE"))
     }
 
@@ -25,9 +24,17 @@ class IngredientTest {
     }
 
     @Test
-    fun `단위가 다르면 비교하지 않는다`() {
-        // 엽산 mg 행(DFE 표기 없음)은 기준 단위가 달라 판정하지 않는다
-        assertFalse(folate.exceedsUpperLimit(BigDecimal("120"), "mg"))
+    fun `환산 표기만 빠진 mg 행도 비교한다`() {
+        // 실제 오류 값 "리아나 생기 플러스" 엽산 120mg은 DFE 표기 없이 mg로 적혀 있다
+        assertTrue(folate.exceedsUpperLimit(BigDecimal("120"), "mg"))
+        assertFalse(folate.exceedsUpperLimit(BigDecimal("0.8"), "mg"))
+    }
+
+    @Test
+    fun `다른 환산 표기나 다른 단위는 비교하지 않는다`() {
+        val vitaminA = Ingredient("비타민 A", referenceAmount = BigDecimal("0.7"), referenceUnit = "mg RAE", upperLimit = BigDecimal("3.0"))
+        assertFalse(vitaminA.exceedsUpperLimit(BigDecimal("420"), "mg RE"))
+        assertFalse(folate.exceedsUpperLimit(BigDecimal("120"), "CFU"))
     }
 
     @Test

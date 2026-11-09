@@ -48,7 +48,9 @@ class Ingredient(
     var referenceAmount: BigDecimal? = referenceAmount
         protected set
 
-    // referenceAmount·upperLimit의 단위. 1일 함량 단위(dailyUnit)가 이와 같을 때만 비교한다.
+    // referenceAmount·upperLimit의 단위. 1일 함량 단위(dailyUnit)가 이와 같거나 환산 표기만 빠진 질량 단위일 때 비교한다.
+    // 단위가 섞인 성분(엽산·비타민 A·나이아신·비타민 E)은 defaultUnit과 값이 같다. 한쪽을 바꾸면 다른 쪽도 함께 바꾼다
+    // (따로 바꾸면 목록의 주 단위와 기준 대비 %·상한 판정의 단위가 갈라진다).
     var referenceUnit: String? = referenceUnit
         protected set
 
@@ -59,12 +61,20 @@ class Ingredient(
     /**
      * 1일 함량이 상한의 2배를 넘으면 true. 원문 오기·파싱 오류로 의심해 검수 대기로 보여준다.
      * 결과는 저장하지 않고 응답 때 계산한다. 저장하면 수집·성분 연결 두 경로가 모두 다시 써야 하고 상한을 고칠 때마다 배치를 돌려야 한다.
-     * 단위가 기준 단위와 다르면(엽산 mg DFE 기준에 mg 행) 비교하지 않는다.
+     * 단위는 기준 단위와 같거나, 환산 표기(DFE·RAE·NE·α-TE)만 빠진 질량 단위("mg")일 때 비교한다.
+     * 다른 환산 표기(비타민 A의 "mg RE")나 다른 단위는 비교하지 않는다.
      */
     fun exceedsUpperLimit(dailyAmount: BigDecimal?, dailyUnit: String?): Boolean {
         val limit = upperLimit ?: return false
-        if (dailyAmount == null || dailyUnit != referenceUnit) return false
+        if (dailyAmount == null || dailyUnit == null || !comparable(dailyUnit)) return false
         return dailyAmount > limit * UPPER_LIMIT_MARGIN
+    }
+
+    // ponytail: 표기 없는 "mg"를 환산 단위와 같게 본다. 나이아신(1mg = 1mg NE)·비타민 E·A(레티놀)는 같고,
+    // 엽산 mg(보충제 엽산)은 상한이 1.0인데 1.7(DFE)로 비교해 느슨하다. 2배 기준의 오류 탐지라 둔다(로컬에서 엽산 120mg 1건 잡힘).
+    private fun comparable(dailyUnit: String): Boolean {
+        val unit = referenceUnit ?: return false
+        return dailyUnit == unit || dailyUnit == unit.substringBefore(' ')
     }
 
     companion object {
