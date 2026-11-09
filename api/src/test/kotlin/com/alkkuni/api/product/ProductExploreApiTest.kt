@@ -169,6 +169,47 @@ class ProductExploreApiTest(
     }
 
     @Test
+    fun `기준 충족은 고른 성분 모두 1일 함량이 기준값 이상인 제품만 남긴다`() {
+        // 기준값(V11): 아연 8.5mg, 엽산 0.4mg DFE. 엽산 mg 행은 환산 표기만 빠진 단위라 상한 판정과 같이 비교한다.
+        val meets = product("A").also { has(it, "아연", "8.5"); has(it, "엽산", "0.4", "mg DFE") }
+        val plainMg = product("B").also { has(it, "아연", "10"); has(it, "엽산", "0.5", "mg") }
+        // 같은 성분 행이 여러 개면 하나라도 기준 이상이면 충족이다.
+        val multi = product("C").also { has(it, "아연", "1"); has(it, "아연", "9"); has(it, "엽산", "0.4", "mg DFE") }
+        product("D").also { has(it, "아연", "8"); has(it, "엽산", "0.4", "mg DFE") } // 아연 미달
+        product("E").also { has(it, "아연", "9"); has(it, "엽산", null) } // 엽산 모름
+        // 아연 상한 35mg의 2배를 넘는 값은 표기 오류로 의심해 충족 근거로 쓰지 않는다.
+        product("F").also { has(it, "아연", "80"); has(it, "엽산", "0.4", "mg DFE") }
+
+        mvc.get("/api/products/explore") {
+            param("ingredient", "${id("아연")},${id("엽산")}")
+            param("meetsReference", "true")
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.data.totalCount") { value(3) }
+            jsonPath("$.data.items[*].id") { value(containsInAnyOrder(meets.toInt(), plainMg.toInt(), multi.toInt())) }
+        }
+        // 끄면 거르지 않는다.
+        mvc.get("/api/products/explore") { param("ingredient", "${id("아연")},${id("엽산")}") }.andExpect {
+            jsonPath("$.data.totalCount") { value(6) }
+        }
+    }
+
+    @Test
+    fun `기준값이 없는 성분을 고르고 기준 충족을 켜면 400이다`() {
+        val noRef = jdbc.queryForObject("SELECT id FROM ingredient WHERE reference_amount IS NULL ORDER BY id LIMIT 1", Long::class.java)!!
+
+        mvc.get("/api/products/explore") {
+            param("ingredient", "${id("아연")},$noRef")
+            param("meetsReference", "true")
+        }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.error.code") { value("INVALID_INPUT") }
+            jsonPath("$.error.details[0].field") { value("meetsReference") }
+        }
+        mvc.get("/api/products/explore") { param("ingredient", "$noRef") }.andExpect { status { isOk() } }
+    }
+
+    @Test
     fun `최신 신고순과 페이지 나누기`() {
         val old = product("A", reportedOn = LocalDate.of(2020, 1, 1)).also { has(it, "아연", "1") }
         val none = product("B", reportedOn = null).also { has(it, "아연", "1") }
@@ -217,6 +258,9 @@ class ProductExploreApiTest(
             header { string("Cache-Control", "max-age=60, public") }
             jsonPath("$.data[?(@.name == '엽산')].defaultUnit") { value(contains("mg DFE")) }
             jsonPath("$.data[?(@.name == '아연')].id") { value(contains(id("아연").toInt())) }
+            // 기준 충족 필터를 켤 수 있는지 화면이 판단한다. 기준값이 없으면 null.
+            jsonPath("$.data[?(@.name == '엽산')].referenceAmount") { value(contains(0.4)) }
+            jsonPath("$.data[?(@.name == '엽산')].referenceUnit") { value(contains("mg DFE")) }
         }
     }
 
