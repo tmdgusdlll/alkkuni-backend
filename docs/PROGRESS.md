@@ -32,7 +32,7 @@
   - [x] 제품 상세 API(회수 이력은 신고번호 일치만) (PR #22)
   - [x] 성분별 제품 목록 API(JDSL, 성분 AND·제외·제형·함량 범위, 주 단위 정렬) + 성분 목록 API (PR #23)
   - [ ] **다음**: 1일 기준값(+ "기준 충족" 필터, 상한 초과 `NEEDS_REVIEW` 검사) → 브랜드 사전 → 기능성 카테고리 사전. 순서는 2026-11-08에 바꿨다(작업 로그)
-    - 1일 기준값 앞부분(기준값·상한 V11, 상한 2배 초과 판정)은 끝남(PR #24). "기준 충족" 필터도 끝남(`feat/reference-filter`). 남은 것: 응답의 기준 대비 %·충족·상한 초과 경고(다음 할 일 6)
+    - 1일 기준값 앞부분(기준값·상한 V11, 상한 2배 초과 판정)은 끝남(PR #24). "기준 충족" 필터도 끝남(PR #25). 남은 것: 응답의 기준 대비 %·충족·상한 초과 경고(다음 할 일 6)
   - [ ] 메인 인기 성분 비교(고정 목록), `product.image_url` 관리자 등록, 구매 링크(ADR-008). PLANNING.md MVP 표에 있는데 작업 순서에서 빠져 있었다(2026-11-07)
 - [ ] **3단계: 인증 + 서랍** ‖ 회수 매칭(batch)
   - 소셜 로그인(웹훅 포함, 세션 + `spring-session-jdbc`), `Member.role`·감사 로그 → 서랍, 마이페이지
@@ -100,7 +100,7 @@
 
 ## 완료
 
-- [x] 성분별 제품 목록 "기준 충족" 필터(`meetsReference`), 성분 목록 API에 `referenceAmount`·`referenceUnit`, 로컬 실제 데이터로 호출·응답 시간 확인 (2026-11-09)
+- [x] 성분별 제품 목록 "기준 충족" 필터(`meetsReference`), 성분 목록 API에 `referenceAmount`·`referenceUnit`, 로컬 실제 데이터로 호출·응답 시간 확인 (PR #25, 2026-11-09)
 - [x] 제품 상세 API(`GET /api/products/{id}`, 성분표 원문 순서, 기능성·주의사항, 신고번호 일치 회수 이력), 로컬 실제 데이터로 호출 확인 (PR #22, 2026-11-07)
 - [x] 제품 비교 API(`GET /api/products/compare?ids=`, 2~3개, `PRODUCT_NOT_FOUND`), 로컬 실제 데이터로 호출 확인 (PR #21, 2026-11-07)
 - [x] 제품 검색 API(`GET /api/products?q=&sort=&page=&size=`, `ProductSearchRepository` 네이티브 SQL, `ApiException`, V9 trigram 인덱스), 로컬 실제 데이터로 호출 확인 (PR #20, 2026-11-07)
@@ -145,11 +145,14 @@
 ## 작업 로그
 
 ### 2026-11-09
-- "기준 충족" 필터(`feat/reference-filter`).
+- "기준 충족" 필터(`feat/reference-filter`, PR #25).
   - 비교할 단위는 상한 판정과 같은 규칙(`Ingredient.comparableUnits`: 기준 단위 + 환산 표기를 뺀 "mg")이다. 엽산 mg(보충제 엽산)은 실제 DFE가 1.7배라 충족 판정이 보수적이다.
   - `basisCheck`는 보지 않는다. 같은 성분 행이 여러 개면 하나만 기준 이상이어도 충족이다.
   - 기준값이 없는 성분을 고르고 켜면 `INVALID_INPUT`(`meetsReference`). 성분 목록 API에서 `referenceAmount`가 null이면 화면이 필터를 끈다(215개 중 54개가 기준값 있음).
-  - 로컬 응답 시간(5회 중앙값): 아연 79ms → 기준 충족 62ms(12,347 → 7,508건), 아연+엽산 49ms → 63ms(3,211 → 2,067건). EXISTS 하나가 더 붙어도 기존 범위 안이다.
+  - 상한 2배(`Ingredient.suspectAbove`)를 넘는 행은 충족 근거로 쓰지 않는다(`/code-review` 반영). 상한 판정과 같은 기준이라, 화면에 "상한 초과 의심"으로 뜰 값이 "기준 충족"으로 걸러지지 않는다. 로컬에서 충족 행 중 25개 제품이 해당한다. 제품 `parseStatus=NEEDS_REVIEW`는 거르지 않는다(122개 제품, 다른 성분 때문일 수 있고 응답에 상태가 나간다).
+  - 기준 조건은 포함 EXISTS에 합쳐 성분당 서브쿼리 하나로 둔다(`/code-review` 반영).
+  - 비타민 A `mg RE`(1,343행)는 비교하지 않는다. 베타카로틴이면 RE가 RAE보다 크게 잡혀 충족을 과대 판정한다. 상한 판정과 같은 보수 쪽이다. 표기 없는 비타민 A·E `mg` 행은 원문이 "비타민E"처럼 화합물을 밝히지 않아 환산 단위와 같게 본다(상한과 같은 규칙).
+  - 로컬 응답 시간(5회 중앙값): 아연 79ms → 기준 충족 59ms(12,347 → 7,505건), 아연+엽산 49ms → 54ms(3,211 → 2,066건).
   - 로컬 DB의 V11 checksum이 파일과 달라 api가 뜨지 않았다. 커밋 전 초안이 적용된 것으로 보이고 기준값 54행은 파일과 같다. 측정은 `--spring.flyway.validate-on-migrate=false`로 했다. 로컬에서 `flyway repair`로 checksum을 맞추면 된다.
 - 배포 구성 확정: 운영 compose·`nginx.conf`는 백엔드 레포 `deploy/`, Nginx는 기본 배포부터 넣는다(PLANNING.md "배포").
 - 1일 기준값 앞부분: 기준값·상한(V11)과 상한 2배 초과 판정(`feat/daily-reference`, PR #24).

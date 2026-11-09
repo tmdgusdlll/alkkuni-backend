@@ -177,6 +177,8 @@ class ProductExploreApiTest(
         val multi = product("C").also { has(it, "아연", "1"); has(it, "아연", "9"); has(it, "엽산", "0.4", "mg DFE") }
         product("D").also { has(it, "아연", "8"); has(it, "엽산", "0.4", "mg DFE") } // 아연 미달
         product("E").also { has(it, "아연", "9"); has(it, "엽산", null) } // 엽산 모름
+        // 아연 상한 35mg의 2배를 넘는 값은 표기 오류로 의심해 충족 근거로 쓰지 않는다.
+        product("F").also { has(it, "아연", "80"); has(it, "엽산", "0.4", "mg DFE") }
 
         mvc.get("/api/products/explore") {
             param("ingredient", "${id("아연")},${id("엽산")}")
@@ -188,7 +190,7 @@ class ProductExploreApiTest(
         }
         // 끄면 거르지 않는다.
         mvc.get("/api/products/explore") { param("ingredient", "${id("아연")},${id("엽산")}") }.andExpect {
-            jsonPath("$.data.totalCount") { value(5) }
+            jsonPath("$.data.totalCount") { value(6) }
         }
     }
 

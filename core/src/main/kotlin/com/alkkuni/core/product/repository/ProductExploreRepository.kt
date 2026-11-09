@@ -34,11 +34,13 @@ data class ExploreBase(
 
 /**
  * "기준 충족" 필터의 성분 하나. units(Ingredient.comparableUnits) 중 한 단위의 1일 함량이 amount 이상인 행이 있어야 한다.
+ * suspectAbove(Ingredient.suspectAbove, 상한 2배)를 넘는 행은 표기·파싱 오류로 보고 충족 근거로 쓰지 않는다. null이면 상한이 없다.
  */
 data class ExploreReference(
     val ingredientId: Long,
     val amount: BigDecimal,
     val units: List<String>,
+    val suspectAbove: BigDecimal?,
 )
 
 /**
@@ -117,11 +119,14 @@ class ProductExploreRepository(
         path(Product::status).eq(ProductStatus.ACTIVE),
         path(Product::rawMaterial).eq(false),
         // 서브쿼리 별칭을 성분마다 다르게 둔다. 같은 별칭이 겹치면 상관 관계가 엉킬 수 있다.
-        *cond.ingredientIds.mapIndexed { i, id -> exists(hasIngredient("inc$i") { it.eq(id) }) }.toTypedArray(),
+        // 기준 충족이 켜지면 같은 서브쿼리에 기준 조건을 더한다(포함 EXISTS를 따로 두지 않는다).
+        // basisCheck는 보지 않는다. "표시 기준량" 제품을 빼면 원료 제외 제품의 77%가 사라진다(PROGRESS.md).
+        *cond.ingredientIds.mapIndexed { i, id ->
+            val ref = cond.references.find { it.ingredientId == id }
+            exists(hasIngredient("inc$i", ref) { it.eq(id) })
+        }.toTypedArray(),
         cond.excludeIds.takeIf { it.isNotEmpty() }?.let { ids -> notExists(hasIngredient("exc") { it.`in`(ids) }) },
         cond.forms.takeIf { it.isNotEmpty() }?.let { path(Product::form).`in`(it) },
-        // 기준 충족: basisCheck는 보지 않는다. "표시 기준량" 제품을 빼면 원료 제외 제품의 77%가 사라진다(PROGRESS.md).
-        *cond.references.mapIndexed { i, ref -> exists(meetsReference("ref$i", ref)) }.toTypedArray(),
         // 범위는 주 단위 값에만 건다. 둘 다 있으면 서브쿼리 하나(between)로 계산한다.
         when {
             cond.min != null && cond.max != null -> mainAmount(cond.base, "rng").between(cond.min, cond.max)
@@ -131,24 +136,21 @@ class ProductExploreRepository(
         },
     )
 
-    private fun Jpql.hasIngredient(alias: String, ingredientMatch: (Path<Long>) -> Predicate): Subquery<Long> {
-        val pi = entity(ProductIngredient::class, alias)
-        return select(pi(ProductIngredient::id))
-            .from(pi)
-            .where(and(pi(ProductIngredient::productId).eq(path(Product::id)), ingredientMatch(pi(ProductIngredient::ingredientId))))
-            .asSubquery()
-    }
-
-    // 기준 성분 행 중 비교 가능한 단위이고 1일 함량이 기준값 이상인 행. 같은 성분 행이 여러 개면 하나만 넘어도 된다.
-    private fun Jpql.meetsReference(alias: String, ref: ExploreReference): Subquery<Long> {
+    // ref가 있으면 비교 가능한 단위이고 1일 함량이 기준값 이상(상한 2배 이하)인 행만 센다. 같은 성분 행이 여러 개면 하나만 맞아도 된다.
+    private fun Jpql.hasIngredient(
+        alias: String,
+        ref: ExploreReference? = null,
+        ingredientMatch: (Path<Long>) -> Predicate,
+    ): Subquery<Long> {
         val pi = entity(ProductIngredient::class, alias)
         return select(pi(ProductIngredient::id))
             .from(pi)
             .whereAnd(
                 pi(ProductIngredient::productId).eq(path(Product::id)),
-                pi(ProductIngredient::ingredientId).eq(ref.ingredientId),
-                pi(ProductIngredient::dailyUnit).`in`(ref.units),
-                pi(ProductIngredient::dailyAmount).ge(ref.amount),
+                ingredientMatch(pi(ProductIngredient::ingredientId)),
+                ref?.let { pi(ProductIngredient::dailyUnit).`in`(it.units) },
+                ref?.let { pi(ProductIngredient::dailyAmount).ge(it.amount) },
+                ref?.suspectAbove?.let { pi(ProductIngredient::dailyAmount).le(it) },
             )
             .asSubquery()
     }

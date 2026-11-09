@@ -53,7 +53,7 @@ class ProductExploreService(
         val references = if (meetsReference) {
             ingredients.map { ing ->
                 val amount = ing.referenceAmount ?: invalid("meetsReference", "기준값이 없는 성분입니다: ${ing.displayName}")
-                ExploreReference(requireNotNull(ing.id), amount, ing.comparableUnits())
+                ExploreReference(requireNotNull(ing.id), amount, ing.comparableUnits(), ing.suspectAbove())
             }
         } else {
             emptyList()

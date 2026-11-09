@@ -65,10 +65,13 @@ class Ingredient(
      * 다른 환산 표기(비타민 A의 "mg RE")나 다른 단위는 비교하지 않는다.
      */
     fun exceedsUpperLimit(dailyAmount: BigDecimal?, dailyUnit: String?): Boolean {
-        val limit = upperLimit ?: return false
+        val threshold = suspectAbove() ?: return false
         if (dailyAmount == null || dailyUnit == null || dailyUnit !in comparableUnits()) return false
-        return dailyAmount > limit * UPPER_LIMIT_MARGIN
+        return dailyAmount > threshold
     }
+
+    // 이 값을 넘는 1일 함량(상한 2배)은 표기·파싱 오류로 의심한다. 상한이 없으면 null.
+    fun suspectAbove(): BigDecimal? = upperLimit?.times(UPPER_LIMIT_MARGIN)
 
     /**
      * referenceAmount·upperLimit과 비교할 수 있는 1일 함량 단위. 기준 단위와, 환산 표기만 뺀 질량 단위("mg DFE" → "mg").
