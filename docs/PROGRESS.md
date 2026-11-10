@@ -145,6 +145,9 @@
 ## 작업 로그
 
 ### 2026-11-09
+- 검색 응답에 상한 초과 판정(`feat/search-upper-limit`). 프론트 검색 화면을 실제 데이터로 보다가 발견했다. `아연` 함량순 1위 "원기정 셀렌효모" 90mg(상한 35mg의 2배 초과)이 경고 없이 보였다. 상한 판정은 비교·상세에만 있었고, 이 제품은 `parseStatus`도 `PARSED`라 화면이 구분할 방법이 없었다.
+  - `ProductSearchItem.exceedsUpperLimit`을 더했다. `matchedIngredient`의 `Ingredient.exceedsUpperLimit`으로 계산해 비교·상세와 같은 판정이다. 성분 검색이 아니면(함량이 없으니) false다. 필드 추가라 기존 화면은 깨지지 않는다.
+  - 로컬 `아연` 함량순 상위 3개(90, 80.64, 80mg)가 true, 50mg부터 false.
 - 응답 기준값 판정과 기능성 원료 상한(`feat/reference-response`, PR #26).
   - 함량 행마다 `referencePercent`(소수점 버림), `meetsReference`, `exceedsUpperLimit`를 응답 때 계산한다(`Ingredient`). 버림인 이유: 올리면 99.9%(미충족)가 100%로 보인다.
   - 충족은 필터와 같은 규칙(기준 이상, 상한 2배 이하). 판정할 수 없으면(사전에 없는 성분, 기준값 없음, 비교 못 하는 단위) 퍼센트·충족은 null이다.
