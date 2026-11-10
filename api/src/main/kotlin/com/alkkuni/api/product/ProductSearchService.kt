@@ -36,7 +36,7 @@ class ProductSearchService(
         return ProductSearchResponse(
             totalCount = searchRepository.count(cond),
             matchedIngredient = ingredient?.toMatchedIngredient(),
-            items = searchRepository.search(cond, searchSort, page.toLong() * size, size).map { it.toItem() },
+            items = searchRepository.search(cond, searchSort, page.toLong() * size, size).map { it.toItem(ingredient) },
         )
     }
 

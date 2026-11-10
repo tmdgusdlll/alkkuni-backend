@@ -133,6 +133,24 @@ class ProductSearchApiTest(
     }
 
     @Test
+    fun `성분 검색이면 1일 함량이 상한 2배를 넘는지 함께 내보낸다`() {
+        // 아연(V11): 상한 35mg, 2배 70mg 초과면 오류 의심. 제품 parseStatus는 PARSED여도 화면이 "검수 대기"로 구분해야 한다
+        val over = product("아연 A").also { ingredient(it, "아연", "90") }
+        val atMargin = product("아연 B").also { ingredient(it, "아연", "70") }
+        val unknown = product("아연 C").also { ingredient(it, "아연", null) }
+
+        mvc.get("/api/products") { param("q", "아연"); param("sort", "amount") }.andExpect {
+            jsonPath("$.data.items[*].id") { value(contains(over.toInt(), atMargin.toInt(), unknown.toInt())) }
+            jsonPath("$.data.items[*].exceedsUpperLimit") { value(contains(true, false, false)) }
+        }
+        // 성분 검색이 아니면 판정할 함량이 없어 false
+        mvc.get("/api/products") { param("q", "아연 A") }.andExpect {
+            jsonPath("$.data.matchedIngredient") { value(null as Any?) }
+            jsonPath("$.data.items[0].exceedsUpperLimit") { value(false) }
+        }
+    }
+
+    @Test
     fun `주 단위가 있는 성분은 검색에서도 성분별 목록과 같은 값·순서를 쓴다`() {
         // 엽산 주 단위는 mg DFE(V10). mg 0.6이 숫자로는 커도 0.4 mg DFE를 고르고, mg 값만 있는 제품은 뒤에 둔다.
         val mixed = product("엽산 A").also { ingredient(it, "엽산", "0.4", "mg DFE"); ingredient(it, "엽산", "0.6") }
