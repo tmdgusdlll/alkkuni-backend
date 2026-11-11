@@ -158,6 +158,25 @@ class ProductExploreApiTest(
     }
 
     @Test
+    fun `함량순에서 상한 2배를 넘는 오류 의심 값은 정렬에 쓰지 않는다`() {
+        // 아연(V11): 상한 35mg, 2배 70mg 초과면 오류 의심. 오류 의심 값만 있는 제품은 모르는 값처럼 뒤로 간다.
+        val suspect = product("A").also { has(it, "아연", "90") }
+        val margin = product("B").also { has(it, "아연", "70") }
+        val low = product("C").also { has(it, "아연", "10") }
+        // 엽산(V11): 상한 1.7mg DFE, 2배 3.4 초과면 오류 의심. 주 단위 값이 의심이면 다른 단위(mg) 값으로 정렬한다.
+        val folSuspect = product("D").also { has(it, "엽산", "3.5", "mg DFE"); has(it, "엽산", "0.5", "mg") }
+        val folMg = product("E").also { has(it, "엽산", "0.6", "mg") }
+        val folDfe = product("F").also { has(it, "엽산", "0.4", "mg DFE") }
+
+        mvc.get("/api/products/explore") { param("ingredient", "${id("아연")}") }.andExpect {
+            jsonPath("$.data.items[*].id") { value(contains(margin.toInt(), low.toInt(), suspect.toInt())) }
+        }
+        mvc.get("/api/products/explore") { param("ingredient", "${id("엽산")}") }.andExpect {
+            jsonPath("$.data.items[*].id") { value(contains(folDfe.toInt(), folMg.toInt(), folSuspect.toInt())) }
+        }
+    }
+
+    @Test
     fun `주 단위가 없는 성분은 단위를 가리지 않고 숫자로 정렬한다`() {
         val low = product("A").also { has(it, "아연", "3") }
         val high = product("B").also { has(it, "아연", "15") }

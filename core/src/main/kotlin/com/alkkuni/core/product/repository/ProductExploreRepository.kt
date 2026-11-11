@@ -26,10 +26,13 @@ enum class ProductExploreSort {
 /**
  * 기준 성분. 함량순 정렬과 함량 범위(min·max)가 이 성분에 걸린다.
  * defaultUnit(Ingredient.defaultUnit)이 있으면 그 단위 행만 범위·1차 정렬 대상이다. 없으면 단위를 가리지 않는다.
+ * units(Ingredient.comparableUnits) 중 한 단위로 suspectAbove(상한 2배)를 넘는 행은 오류 의심이라 함량순 정렬에 쓰지 않는다. null이면 상한이 없다.
  */
 data class ExploreBase(
     val ingredientId: Long,
     val defaultUnit: String?,
+    val suspectAbove: BigDecimal? = null,
+    val units: List<String> = emptyList(),
 )
 
 /**
@@ -72,6 +75,7 @@ data class ProductExploreRow(
  * 원료 품목과 삭제된 제품은 뺀다.
  *
  * 함량순 정렬 키는 검색 API(ProductSearchRepository)와 같다: 주 단위 값 → 다른 단위(단위 내림차순) 값 → 모르는 값.
+ * 오류 의심 값(상한 2배 초과)은 정렬 키에서 빼서 모르는 값처럼 다룬다. 범위·기준 충족 필터와 응답 값은 그대로다.
  * 같은 성분 행이 여러 개면 정렬에는 가장 큰 값을 쓰고, 응답에는 합치지 않고 모두 내보낸다(PLANNING.md "함량 표시 규칙").
  */
 @Repository
@@ -161,10 +165,10 @@ class ProductExploreRepository(
      * 단위가 다른 값끼리 숫자로 비교되지 않게 묶음을 나눈다.
      */
     private fun Jpql.amountOrder(base: ExploreBase) = if (base.defaultUnit == null) {
-        arrayOf(mainAmount(base, "amain").desc().nullsLast())
+        arrayOf(mainAmount(base, "amain", forSort = true).desc().nullsLast())
     } else {
         arrayOf(
-            mainAmount(base, "amain").desc().nullsLast(),
+            mainAmount(base, "amain", forSort = true).desc().nullsLast(),
             otherUnit(base, "ounit").desc().nullsLast(),
             // ponytail: 한 제품에 다른 단위가 두 종류 이상이면(예: mg RE와 mg 행이 같이 있음) 이 최댓값은 단위를 섞는다. 로컬에 드물어 그대로 둔다.
             otherAmount(base, "oamt").desc().nullsLast(),
@@ -172,7 +176,8 @@ class ProductExploreRepository(
     }
 
     // 기준 성분의 주 단위 행(주 단위가 없으면 모든 행) 중 1일 함량 최댓값.
-    private fun Jpql.mainAmount(base: ExploreBase, alias: String): Subquery<BigDecimal> {
+    // forSort면 오류 의심 행을 뺀다. 범위 필터는 지금처럼 모든 행을 본다.
+    private fun Jpql.mainAmount(base: ExploreBase, alias: String, forSort: Boolean = false): Subquery<BigDecimal> {
         val pi = entity(ProductIngredient::class, alias)
         return select(max(pi(ProductIngredient::dailyAmount)))
             .from(pi)
@@ -180,9 +185,16 @@ class ProductExploreRepository(
                 pi(ProductIngredient::productId).eq(path(Product::id)),
                 pi(ProductIngredient::ingredientId).eq(base.ingredientId),
                 base.defaultUnit?.let { pi(ProductIngredient::dailyUnit).eq(it) },
+                if (forSort) notSuspect(pi, base) else null,
             )
             .asSubquery()
     }
+
+    // 오류 의심(비교 가능한 단위이고 상한 2배 초과)이 아닌 행. 상한이 없으면 조건을 걸지 않는다.
+    private fun Jpql.notSuspect(pi: Entity<ProductIngredient>, base: ExploreBase): Predicate? =
+        base.suspectAbove?.let {
+            or(pi(ProductIngredient::dailyUnit).notIn(base.units), pi(ProductIngredient::dailyAmount).le(it))
+        }
 
     // 기준 성분의 주 단위가 아닌, 함량을 아는 행의 단위(최댓값)와 함량(최댓값). 주 단위가 있을 때만 부른다.
     private fun Jpql.otherUnit(base: ExploreBase, alias: String): Subquery<String> {
@@ -200,5 +212,6 @@ class ProductExploreRepository(
         pi(ProductIngredient::ingredientId).eq(base.ingredientId),
         pi(ProductIngredient::dailyUnit).ne(requireNotNull(base.defaultUnit)),
         pi(ProductIngredient::dailyAmount).isNotNull(),
+        notSuspect(pi, base),
     )
 }
