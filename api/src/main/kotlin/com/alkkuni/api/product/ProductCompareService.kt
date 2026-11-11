@@ -40,6 +40,7 @@ class ProductCompareService(
                     name = ingredient?.displayName ?: group.first().rawName,
                     referenceAmount = ingredient?.referenceAmount,
                     referenceUnit = ingredient?.referenceUnit,
+                    defaultUnit = ingredient?.defaultUnit,
                     values = ids.map { id -> byProduct[id].orEmpty().map { it.toCompareAmount(ingredient) } },
                 )
             }
