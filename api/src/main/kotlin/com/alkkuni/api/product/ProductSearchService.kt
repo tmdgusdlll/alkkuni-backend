@@ -24,7 +24,13 @@ class ProductSearchService(
     fun search(q: String, sort: String, page: Int, size: Int): ProductSearchResponse {
         val query = q.trim()
         val ingredient = ingredientRepository.findByAliasKey(IngredientName.normalize(query))
-        val cond = ProductSearchCondition(query, ingredient?.id, ingredient?.defaultUnit)
+        val cond = ProductSearchCondition(
+            query,
+            ingredient?.id,
+            ingredient?.defaultUnit,
+            ingredient?.suspectAbove(),
+            ingredient?.comparableUnits().orEmpty(),
+        )
         if (!cond.searchable) {
             throw ApiException(ErrorCode.INVALID_INPUT, listOf(ErrorDetail("q", "${ProductSearchCondition.TEXT_MIN_LENGTH}자 이상 입력해 주세요.")))
         }

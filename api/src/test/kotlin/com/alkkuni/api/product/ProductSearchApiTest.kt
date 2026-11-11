@@ -120,8 +120,8 @@ class ProductSearchApiTest(
 
     @Test
     fun `함량마다 하루치 확인 여부와 검수 상태를 함께 내보낸다`() {
-        // 상한을 크게 넘어 검수 대기인 값이 함량순 1위여도, 화면이 검증된 값과 구분할 수 있어야 한다.
-        product("아연 A", parseStatus = "NEEDS_REVIEW", basisCheck = "UNVERIFIED").also { ingredient(it, "아연", "90") }
+        // 검수 대기인 값도 화면이 검증된 값과 구분할 수 있어야 한다.
+        product("아연 A", parseStatus = "NEEDS_REVIEW", basisCheck = "UNVERIFIED").also { ingredient(it, "아연", "20") }
         product("아연 B", basisCheck = "DAILY").also { ingredient(it, "아연", "8.5") }
 
         mvc.get("/api/products") { param("q", "아연"); param("sort", "amount") }.andExpect {
@@ -133,15 +133,18 @@ class ProductSearchApiTest(
     }
 
     @Test
-    fun `성분 검색이면 1일 함량이 상한 2배를 넘는지 함께 내보낸다`() {
-        // 아연(V11): 상한 35mg, 2배 70mg 초과면 오류 의심. 제품 parseStatus는 PARSED여도 화면이 "검수 대기"로 구분해야 한다
+    fun `성분 검색이면 상한 2배 초과 여부를 내보내고, 함량순에서는 그 값을 뒤로 보낸다`() {
+        // 아연(V11): 상한 35mg, 2배 70mg 초과면 오류 의심. 70은 경계라 정상 값이다.
+        // 제품 parseStatus는 PARSED여도 화면이 "검수 대기"로 구분해야 하고, 함량순 1위를 오류 값이 차지하면 안 된다.
         val over = product("아연 A").also { ingredient(it, "아연", "90") }
         val atMargin = product("아연 B").also { ingredient(it, "아연", "70") }
-        val unknown = product("아연 C").also { ingredient(it, "아연", null) }
+        val low = product("아연 C").also { ingredient(it, "아연", "10") }
 
         mvc.get("/api/products") { param("q", "아연"); param("sort", "amount") }.andExpect {
-            jsonPath("$.data.items[*].id") { value(contains(over.toInt(), atMargin.toInt(), unknown.toInt())) }
-            jsonPath("$.data.items[*].exceedsUpperLimit") { value(contains(true, false, false)) }
+            jsonPath("$.data.items[*].id") { value(contains(atMargin.toInt(), low.toInt(), over.toInt())) }
+            jsonPath("$.data.items[*].exceedsUpperLimit") { value(contains(false, false, true)) }
+            // 정렬만 뒤로 가고 값은 그대로 낸다
+            jsonPath("$.data.items[2].dailyAmount") { value(90) }
         }
         // 성분 검색이 아니면 판정할 함량이 없어 false
         mvc.get("/api/products") { param("q", "아연 A") }.andExpect {

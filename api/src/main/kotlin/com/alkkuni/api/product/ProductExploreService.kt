@@ -48,7 +48,7 @@ class ProductExploreService(
         val ingredients = ingredientIds.map { found.getValue(it) }
 
         val (searchSort, baseId) = parseSort(sort, ingredientIds)
-        val bases = ingredients.map { ExploreBase(requireNotNull(it.id), it.defaultUnit) }
+        val bases = ingredients.map { ExploreBase(requireNotNull(it.id), it.defaultUnit, it.suspectAbove(), it.comparableUnits()) }
         val base = bases.first { it.ingredientId == baseId }
         val references = if (meetsReference) {
             ingredients.map { ing ->
