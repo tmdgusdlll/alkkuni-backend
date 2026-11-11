@@ -65,10 +65,22 @@ class ProductCompareApiTest(
         mvc.get("/api/products/compare") { param("ids", "$a,$b") }.andExpect {
             jsonPath("$.data.ingredients[0].referenceAmount") { value(8.5) }
             jsonPath("$.data.ingredients[0].referenceUnit") { value("mg") }
+            jsonPath("$.data.ingredients[0].defaultUnit") { value(null as Any?) }
             jsonPath("$.data.ingredients[0].values[0][0].referencePercent") { value(141) }
             jsonPath("$.data.ingredients[0].values[0][0].meetsReference") { value(true) }
             jsonPath("$.data.ingredients[0].values[1][0].meetsReference") { value(null as Any?) }
             jsonPath("$.data.ingredients[0].values[1][0].exceedsUpperLimit") { value(true) }
+        }
+    }
+
+    @Test
+    fun `성분의 주 단위를 내보낸다`() {
+        // 엽산은 mg DFE로 단위가 섞여 주 단위가 있다. 화면은 이 단위와 다른 값을 "다른 단위 표기"로 본다
+        val a = product("A").also { ingredient(it, "엽산", "0.4") }
+        val b = product("B").also { ingredient(it, "엽산", "0.2") }
+
+        mvc.get("/api/products/compare") { param("ids", "$a,$b") }.andExpect {
+            jsonPath("$.data.ingredients[0].defaultUnit") { value("mg DFE") }
         }
     }
 

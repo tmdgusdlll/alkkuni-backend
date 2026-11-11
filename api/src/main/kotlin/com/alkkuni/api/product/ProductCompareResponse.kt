@@ -32,6 +32,8 @@ data class CompareIngredient(
     // 1일 기준값과 단위(성분 목록 API와 같음). 기준값이 없는 성분이나 사전에 없는 성분은 null이다.
     val referenceAmount: BigDecimal?,
     val referenceUnit: String?,
+    // 주 단위(성분 목록 API와 같음). 값의 dailyUnit이 이것과 다르면 화면은 "다른 단위 표기"로 막대·강조에서 뺀다. 단위가 섞이지 않는 성분과 사전에 없는 성분은 null이다.
+    val defaultUnit: String?,
     // products와 같은 순서의 제품별 함량 목록. 없으면 빈 목록("-").
     // 한 제품에 여러 개면 합치지 않는다. 멀티팩(합산이 맞음)과 수출국별·원료용 중복 규격(하나만 맞음)을 데이터로 구분할 수 없다(PLANNING.md).
     val values: List<List<CompareAmount>>,

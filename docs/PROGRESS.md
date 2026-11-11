@@ -144,6 +144,10 @@
 
 ## 작업 로그
 
+### 2026-11-11
+- 비교 응답 성분 행에 `defaultUnit`(`feat/compare-default-unit`).
+  - 프론트 비교 칸이 목록과 같은 규칙으로 "다른 단위 표기"를 판정하려면 성분의 주 단위가 필요하다(목록 `ingredients[].defaultUnit`과 같음). 프론트가 "기준값은 있는데 %가 null"로 대신 판정하면 기준값 없는 성분의 다른 단위 값을 못 잡는다.
+
 ### 2026-11-09
 - 응답 기준값 판정과 기능성 원료 상한(`feat/reference-response`, PR #26).
   - 함량 행마다 `referencePercent`(소수점 버림), `meetsReference`, `exceedsUpperLimit`를 응답 때 계산한다(`Ingredient`). 버림인 이유: 올리면 99.9%(미충족)가 100%로 보인다.
