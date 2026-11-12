@@ -1,5 +1,6 @@
 package com.alkkuni.api.product
 
+import com.alkkuni.api.brand.BrandRef
 import com.alkkuni.core.ingredient.entity.Ingredient
 import com.alkkuni.core.product.entity.Product
 import com.alkkuni.core.product.entity.ProductIngredient
@@ -18,6 +19,8 @@ data class CompareProduct(
     val id: Long,
     val name: String,
     val manufacturer: String?,
+    // 제품명에서 찾은 브랜드. 없으면 null(대부분)
+    val brand: BrandRef?,
     val form: String?,
     // DAILY·PER_SERVING만 "1일 기준", 나머지는 "표시 기준량"으로 보여준다(검색 API와 같은 규칙).
     val basisCheck: BasisCheck?,
@@ -58,10 +61,11 @@ data class CompareAmount(
     val basisUnit: String,
 )
 
-fun Product.toCompareProduct() = CompareProduct(
+fun Product.toCompareProduct(brand: BrandRef?) = CompareProduct(
     id = requireNotNull(id),
     name = name,
     manufacturer = manufacturer,
+    brand = brand,
     form = form,
     basisCheck = basisCheck,
     parseStatus = parseStatus,

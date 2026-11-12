@@ -57,6 +57,17 @@ class ProductCompareApiTest(
     }
 
     @Test
+    fun `제품에 브랜드를 붙이고 없으면 null이다`() {
+        val a = product("ATOMY 아연").also { ingredient(it, "아연", "8"); linkBrand(it, "애터미") }
+        val b = product("아연 B").also { ingredient(it, "아연", "8") }
+
+        mvc.get("/api/products/compare") { param("ids", "$a,$b") }.andExpect {
+            jsonPath("$.data.products[0].brand.name") { value("애터미") }
+            jsonPath("$.data.products[1].brand") { value(null as Any?) }
+        }
+    }
+
+    @Test
     fun `함량 칸마다 기준값 판정을 붙인다`() {
         // 아연 기준 8.5mg, 상한 35mg. 상세·목록 API와 같은 Ingredient 판정을 쓴다
         val a = product("A").also { ingredient(it, "아연", "12") }
@@ -175,6 +186,10 @@ class ProductCompareApiTest(
         mvc.get("/api/products/compare") { param("ids", "$a,$b") }.andExpect {
             header { string("Cache-Control", "max-age=60, public") }
         }
+    }
+
+    private fun linkBrand(productId: Long, brandName: String) {
+        jdbc.update("UPDATE product SET brand_id = (SELECT id FROM brand WHERE name = ?) WHERE id = ?", brandName, productId)
     }
 
     private fun product(

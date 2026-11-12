@@ -201,6 +201,48 @@ class ProductSearchApiTest(
     }
 
     @Test
+    fun `브랜드 표기로 검색하면 제품명에 브랜드 이름이 없는 그 브랜드 제품도 찾는다`() {
+        // V13: 애터미의 표기에 "ATOMY"가 있다. 제품명에 "애터미"가 없어 이름 검색으로는 안 걸린다.
+        val atomy = product("ATOMY 비타민C").also { linkBrand(it, "애터미") }
+        product("비타민C 1000") // 브랜드 없음
+
+        mvc.get("/api/products") { param("q", "애터미") }.andExpect {
+            status { isOk() }
+            jsonPath("$.data.totalCount") { value(1) }
+            jsonPath("$.data.matchedBrand.name") { value("애터미") }
+            jsonPath("$.data.items[*].id") { value(contains(atomy.toInt())) }
+            jsonPath("$.data.items[0].brand.name") { value("애터미") }
+        }
+        // 브랜드 표기가 아니면 matchedBrand는 null, 브랜드 없는 제품의 brand도 null
+        mvc.get("/api/products") { param("q", "비타민C") }.andExpect {
+            jsonPath("$.data.matchedBrand") { value(null as Any?) }
+            jsonPath("$.data.items[?(@.name == '비타민C 1000')].brand") { value(contains(null as Any?)) }
+        }
+    }
+
+    @Test
+    fun `브랜드로 찾은 제품은 제품명 유사도와 상관없이 이름만 일치한 다른 제품보다 앞에 온다`() {
+        // 이름에 "애터미"가 있지만 브랜드가 아닌 제품(유사도 높음)과, 이름에 없는 애터미 제품(유사도 0에 가까움)
+        val other = product("애터미 공동구매 비타민")
+        val atomy = product("ATOMY 비타민C").also { linkBrand(it, "애터미") }
+
+        mvc.get("/api/products") { param("q", "애터미") }.andExpect {
+            jsonPath("$.data.items[*].id") { value(contains(atomy.toInt(), other.toInt())) }
+        }
+    }
+
+    @Test
+    fun `검색어가 브랜드면 그 브랜드 제품끼리는 제품명 유사도 대신 최신순이다`() {
+        // 실제 "애터미" 검색: 걸리는 제품이 모두 애터미 제품이라, 유사도로 정렬하면 이름에 "애터미"가 없는 ATOMY 제품이 전부 뒤로 간다.
+        val oldNamed = product("애터미 헤모힘", reportedOn = LocalDate.of(2018, 1, 1)).also { linkBrand(it, "애터미") }
+        val newEnglish = product("ATOMY 비타민C", reportedOn = LocalDate.of(2024, 1, 1)).also { linkBrand(it, "애터미") }
+
+        mvc.get("/api/products") { param("q", "애터미") }.andExpect {
+            jsonPath("$.data.items[*].id") { value(contains(newEnglish.toInt(), oldNamed.toInt())) }
+        }
+    }
+
+    @Test
     fun `성공 응답만 60초 공개 캐시 헤더가 붙는다`() {
         mvc.get("/api/products") { param("q", "아연") }.andExpect {
             header { string("Cache-Control", "max-age=60, public") }
@@ -209,6 +251,10 @@ class ProductSearchApiTest(
             status { isBadRequest() }
             header { doesNotExist("Cache-Control") }
         }
+    }
+
+    private fun linkBrand(productId: Long, brandName: String) {
+        jdbc.update("UPDATE product SET brand_id = (SELECT id FROM brand WHERE name = ?) WHERE id = ?", brandName, productId)
     }
 
     private fun product(

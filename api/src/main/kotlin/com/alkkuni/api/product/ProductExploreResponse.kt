@@ -1,5 +1,6 @@
 package com.alkkuni.api.product
 
+import com.alkkuni.api.brand.BrandRef
 import com.alkkuni.core.ingredient.entity.Ingredient
 import com.alkkuni.core.product.enums.BasisCheck
 import com.alkkuni.core.product.enums.ParseStatus
@@ -30,6 +31,8 @@ data class ProductExploreItem(
     val id: Long,
     val name: String,
     val manufacturer: String?,
+    // 제품명에서 찾은 브랜드. 없으면 null(대부분)
+    val brand: BrandRef?,
     val form: String?,
     val reportedOn: LocalDate?,
     // 함량이 하루치로 확인됐는지. DAILY·PER_SERVING만 "1일 기준", 나머지는 "표시 기준량"(검색 API와 같음).
@@ -53,10 +56,11 @@ fun Ingredient.toExploreIngredient() = ExploreIngredient(
     referenceUnit = referenceUnit,
 )
 
-fun ProductExploreRow.toExploreItem(amounts: List<ExploreItemAmount>) = ProductExploreItem(
+fun ProductExploreRow.toExploreItem(brand: BrandRef?, amounts: List<ExploreItemAmount>) = ProductExploreItem(
     id = id,
     name = name,
     manufacturer = manufacturer,
+    brand = brand,
     form = form,
     reportedOn = reportedOn,
     basisCheck = basisCheck,

@@ -18,8 +18,8 @@ enum class ProductSearchSort {
 }
 
 /**
- * 검색 조건. textSearch면 제품명·제조사(부분 일치, 유사도), ingredientId가 있으면 그 성분이 든 제품도 찾는다.
- * 둘 중 하나는 있어야 한다(searchable). defaultUnit은 그 성분의 주 단위(Ingredient.defaultUnit)다.
+ * 검색 조건. textSearch면 제품명·제조사(부분 일치, 유사도), ingredientId가 있으면 그 성분이 든 제품,
+ * brandId가 있으면 그 브랜드 제품도 찾는다. 셋 중 하나는 있어야 한다(searchable). defaultUnit은 그 성분의 주 단위(Ingredient.defaultUnit)다.
  * suspectAbove(Ingredient.suspectAbove, 상한 2배)를 넘는 comparableUnits(Ingredient.comparableUnits) 값은 오류 의심이라 함량순 정렬에 쓰지 않는다. null이면 상한이 없다.
  */
 data class ProductSearchCondition(
@@ -28,6 +28,7 @@ data class ProductSearchCondition(
     val defaultUnit: String? = null,
     val suspectAbove: BigDecimal? = null,
     val comparableUnits: List<String> = emptyList(),
+    val brandId: Long? = null,
 ) {
     // 공백을 뺀 글자 수. 길이 기준은 여기 한 곳에서만 정한다.
     private val length = q.count { !it.isWhitespace() }
@@ -38,7 +39,7 @@ data class ProductSearchCondition(
     // 3자 미만은 trigram이 모자라 오타 허용이 의미 없고 <%가 전체 스캔 비용만 4배로 늘린다(로컬 실측 32ms → 122ms).
     val fuzzy = length >= FUZZY_MIN_LENGTH
 
-    val searchable = textSearch || ingredientId != null
+    val searchable = textSearch || ingredientId != null || brandId != null
 
     companion object {
         const val TEXT_MIN_LENGTH = 2
@@ -58,6 +59,7 @@ data class ProductSearchRow(
     val dailyUnit: String?,
     val basisCheck: BasisCheck?,
     val parseStatus: ParseStatus,
+    val brandId: Long?,
 )
 
 /**
@@ -91,13 +93,13 @@ class ProductSearchRepository(private val jdbc: JdbcClient) {
             "LEFT JOIN (SELECT NULL::numeric AS daily_amount, NULL::varchar AS daily_unit) a ON true"
         }
         val order = when (sort) {
-            ProductSearchSort.RELEVANCE -> "p.text_match DESC, word_similarity(:q, p.name) DESC, p.reported_on DESC NULLS LAST"
+            ProductSearchSort.RELEVANCE -> "${brandFirst(cond)}p.text_match DESC, ${similarity(cond)} DESC, p.reported_on DESC NULLS LAST"
             ProductSearchSort.LATEST -> "p.reported_on DESC NULLS LAST"
             ProductSearchSort.AMOUNT -> "${unitOrder(sortKey("a.daily_unit"))}${sortKey("a.daily_amount")} DESC NULLS LAST"
         }
         val sql = """
             ${hits(cond)}
-            SELECT p.id, p.name, p.manufacturer, p.form, p.reported_on, p.basis_check, p.parse_status, a.daily_amount, a.daily_unit
+            SELECT p.id, p.name, p.manufacturer, p.form, p.reported_on, p.basis_check, p.parse_status, p.brand_id, a.daily_amount, a.daily_unit
             FROM hit p
             $amount
             ORDER BY $order, p.id DESC
@@ -110,10 +112,19 @@ class ProductSearchRepository(private val jdbc: JdbcClient) {
             .list()
     }
 
+    // 검색어가 브랜드면 그 브랜드 제품을 맨 앞에 두고, 그 안에서는 제품명 유사도를 보지 않는다(같은 값 → 최신순).
+    // 제품명에 브랜드 이름이 없는 제품("ATOMY …")은 유사도가 0에 가까워, 유사도로 정렬하면 브랜드 제품 중 맨 뒤로 밀린다
+    // (로컬 "애터미" 347개 중 107개가 241위 이후).
+    private fun brandFirst(cond: ProductSearchCondition) = if (cond.brandId != null) "(p.brand_id = :brandId) DESC NULLS LAST, " else ""
+
+    private fun similarity(cond: ProductSearchCondition) =
+        if (cond.brandId != null) "CASE WHEN p.brand_id = :brandId THEN 1 ELSE word_similarity(:q, p.name) END" else "word_similarity(:q, p.name)"
+
     fun count(cond: ProductSearchCondition): Long =
         params(jdbc.sql("${hits(cond)} SELECT count(*) FROM hit"), cond).query(Long::class.java).single()
 
-    // 검색에 걸린 제품과, 제품명·제조사로 걸렸는지(text_match). 성분으로도 걸리면 한 줄로 합친다.
+    // 검색에 걸린 제품과, 제품명·제조사·브랜드로 걸렸는지(text_match). 여러 경로로 걸리면 한 줄로 합친다.
+    // 브랜드는 제품명에 브랜드 이름이 없는 제품("ATOMY …" ↔ 애터미)을 찾으려고 더한다. 관련도순에서는 브랜드 제품이 먼저다(brandFirst).
     // 상태 필터에 product JOIN이 필요하므로, 그때 응답 칼럼도 같이 가져와 본 쿼리에서 product를 다시 JOIN하지 않는다.
     private fun hits(cond: ProductSearchCondition): String {
         require(cond.searchable) { "검색 대상이 없음" }
@@ -126,10 +137,11 @@ class ProductSearchRepository(private val jdbc: JdbcClient) {
                 null
             },
             cond.ingredientId?.let { "SELECT product_id AS id, false AS text_match FROM product_ingredient WHERE ingredient_id = :ingredientId" },
+            cond.brandId?.let { "SELECT id, true AS text_match FROM product WHERE brand_id = :brandId" },
         )
         return """
             WITH hit AS (
-                SELECT p.id, p.name, p.manufacturer, p.form, p.reported_on, p.basis_check, p.parse_status,
+                SELECT p.id, p.name, p.manufacturer, p.form, p.reported_on, p.basis_check, p.parse_status, p.brand_id,
                        bool_or(h.text_match) AS text_match
                 FROM (${sources.joinToString(" UNION ALL ")}) h
                 JOIN product p ON p.id = h.id
@@ -144,6 +156,7 @@ class ProductSearchRepository(private val jdbc: JdbcClient) {
         .param("q", cond.q)
         .param("pattern", "%${escapeLike(cond.q)}%")
         .param("ingredientId", cond.ingredientId)
+        .param("brandId", cond.brandId)
         .param("defaultUnit", cond.defaultUnit)
         .param("suspectAbove", cond.suspectAbove)
         .param("comparableUnits", cond.comparableUnits)
@@ -161,5 +174,6 @@ class ProductSearchRepository(private val jdbc: JdbcClient) {
         dailyUnit = getString("daily_unit"),
         basisCheck = getString("basis_check")?.let(BasisCheck::valueOf),
         parseStatus = ParseStatus.valueOf(getString("parse_status")),
+        brandId = getObject("brand_id", Long::class.javaObjectType),
     )
 }

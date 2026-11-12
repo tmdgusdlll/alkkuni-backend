@@ -48,7 +48,7 @@ data class ExploreReference(
 
 /**
  * 성분별 제품 목록 조건. ingredientIds는 모두 든(AND) 제품, excludeIds는 하나라도 든 제품을 뺀다.
- * forms가 비어 있으면 제형을 가리지 않는다. references가 비어 있으면 기준 충족으로 거르지 않는다.
+ * forms·brandIds가 비어 있으면 제형·브랜드를 가리지 않는다(고르면 그중 하나). references가 비어 있으면 기준 충족으로 거르지 않는다.
  */
 data class ProductExploreCondition(
     val ingredientIds: List<Long>,
@@ -58,6 +58,7 @@ data class ProductExploreCondition(
     val min: BigDecimal?,
     val max: BigDecimal?,
     val references: List<ExploreReference> = emptyList(),
+    val brandIds: List<Long> = emptyList(),
 )
 
 data class ProductExploreRow(
@@ -68,6 +69,7 @@ data class ProductExploreRow(
     val reportedOn: LocalDate?,
     val basisCheck: BasisCheck?,
     val parseStatus: ParseStatus,
+    val brandId: Long?,
 )
 
 /**
@@ -96,6 +98,7 @@ class ProductExploreRepository(
                     path(Product::reportedOn),
                     path(Product::basisCheck),
                     path(Product::parseStatus),
+                    path(Product::brandId),
                 ).from(entity(Product::class))
                     .whereAnd(*predicates(cond))
                     .orderBy(
@@ -131,6 +134,7 @@ class ProductExploreRepository(
         }.toTypedArray(),
         cond.excludeIds.takeIf { it.isNotEmpty() }?.let { ids -> notExists(hasIngredient("exc") { it.`in`(ids) }) },
         cond.forms.takeIf { it.isNotEmpty() }?.let { path(Product::form).`in`(it) },
+        cond.brandIds.takeIf { it.isNotEmpty() }?.let { path(Product::brandId).`in`(it) },
         // 범위는 주 단위 값에만 건다. 둘 다 있으면 서브쿼리 하나(between)로 계산한다.
         when {
             cond.min != null && cond.max != null -> mainAmount(cond.base, "rng").between(cond.min, cond.max)

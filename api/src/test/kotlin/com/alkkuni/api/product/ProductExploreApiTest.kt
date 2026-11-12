@@ -297,7 +297,30 @@ class ProductExploreApiTest(
         }
     }
 
+    @Test
+    fun `브랜드로 거르고 응답에 브랜드를 붙인다`() {
+        val atomy = product("A").also { has(it, "아연", "8"); linkBrand(it, "애터미") }
+        val kwangdong = product("B").also { has(it, "아연", "8"); linkBrand(it, "광동") }
+        product("C").also { has(it, "아연", "8") } // 브랜드 없음
+        val brandId = { name: String -> jdbc.queryForObject("SELECT id FROM brand WHERE name = ?", Long::class.java, name)!! }
+
+        mvc.get("/api/products/explore") { param("ingredient", "${id("아연")}"); param("brand", "${brandId("애터미")},${brandId("광동")}") }.andExpect {
+            status { isOk() }
+            jsonPath("$.data.totalCount") { value(2) }
+            jsonPath("$.data.items[*].id") { value(containsInAnyOrder(atomy.toInt(), kwangdong.toInt())) }
+            jsonPath("$.data.items[?(@.id == $atomy)].brand.name") { value(contains("애터미")) }
+        }
+        mvc.get("/api/products/explore") { param("ingredient", "${id("아연")}"); param("brand", "999999") }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.error.details[0].field") { value("brand") }
+        }
+    }
+
     private fun id(name: String): Long = jdbc.queryForObject("SELECT id FROM ingredient WHERE name = ?", Long::class.java, name)!!
+
+    private fun linkBrand(productId: Long, brandName: String) {
+        jdbc.update("UPDATE product SET brand_id = (SELECT id FROM brand WHERE name = ?) WHERE id = ?", brandName, productId)
+    }
 
     private fun product(
         name: String,
