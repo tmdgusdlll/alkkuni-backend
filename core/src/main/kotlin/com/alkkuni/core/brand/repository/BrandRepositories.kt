@@ -21,6 +21,12 @@ interface BrandRepository : JpaRepository<Brand, Long> {
         """,
     )
     fun findAllWithProductCount(): List<BrandProductCount>
+
+    // 표기 키(BrandName.key)로 브랜드. 보류 표기(brand_id NULL)는 JOIN에서 빠져 null이다.
+    @Query("SELECT b FROM Brand b JOIN BrandAlias a ON a.brandId = b.id WHERE a.aliasKey = :aliasKey")
+    fun findByAliasKey(aliasKey: String): Brand?
+
+    fun countByIdIn(ids: Collection<Long>): Long
 }
 
 interface BrandAliasRepository : JpaRepository<BrandAlias, String>

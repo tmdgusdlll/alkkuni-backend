@@ -51,7 +51,7 @@ class ProductExploreService(
         if (brandIds.size != rawBrandIds.size || brandIds.size > MAX_BRANDS || brandIds.distinct().size != brandIds.size) {
             invalid("brand", "서로 다른 브랜드를 ${MAX_BRANDS}개까지 골라 주세요.")
         }
-        if (brandRepository.findAllById(brandIds).size != brandIds.size) invalid("brand", "없는 브랜드가 있습니다.")
+        if (brandIds.isNotEmpty() && brandRepository.countByIdIn(brandIds) != brandIds.size.toLong()) invalid("brand", "없는 브랜드가 있습니다.")
 
         val found = ingredientRepository.findAllById(ingredientIds + excludeIds).associateBy { requireNotNull(it.id) }
         (ingredientIds + excludeIds).firstOrNull { it !in found }?.let { invalid(if (it in ingredientIds) "ingredient" else "exclude", "없는 성분입니다: $it") }

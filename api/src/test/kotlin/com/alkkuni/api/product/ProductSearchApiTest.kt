@@ -221,6 +221,17 @@ class ProductSearchApiTest(
     }
 
     @Test
+    fun `브랜드로 찾은 제품은 제품명 유사도와 상관없이 이름만 일치한 다른 제품보다 앞에 온다`() {
+        // 이름에 "애터미"가 있지만 브랜드가 아닌 제품(유사도 높음)과, 이름에 없는 애터미 제품(유사도 0에 가까움)
+        val other = product("애터미 공동구매 비타민")
+        val atomy = product("ATOMY 비타민C").also { linkBrand(it, "애터미") }
+
+        mvc.get("/api/products") { param("q", "애터미") }.andExpect {
+            jsonPath("$.data.items[*].id") { value(contains(atomy.toInt(), other.toInt())) }
+        }
+    }
+
+    @Test
     fun `성공 응답만 60초 공개 캐시 헤더가 붙는다`() {
         mvc.get("/api/products") { param("q", "아연") }.andExpect {
             header { string("Cache-Control", "max-age=60, public") }

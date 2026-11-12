@@ -6,14 +6,12 @@ import com.alkkuni.api.common.ErrorDetail
 import com.alkkuni.api.brand.refsOf
 import com.alkkuni.api.brand.toRef
 import com.alkkuni.core.brand.BrandName
-import com.alkkuni.core.brand.repository.BrandAliasRepository
 import com.alkkuni.core.brand.repository.BrandRepository
 import com.alkkuni.core.ingredient.IngredientName
 import com.alkkuni.core.ingredient.repository.IngredientRepository
 import com.alkkuni.core.product.repository.ProductSearchCondition
 import com.alkkuni.core.product.repository.ProductSearchRepository
 import com.alkkuni.core.product.repository.ProductSearchSort
-import org.springframework.data.repository.findByIdOrNull
 import org.springframework.stereotype.Service
 
 @Service
@@ -21,7 +19,6 @@ class ProductSearchService(
     private val searchRepository: ProductSearchRepository,
     private val ingredientRepository: IngredientRepository,
     private val brandRepository: BrandRepository,
-    private val brandAliasRepository: BrandAliasRepository,
 ) {
 
     /**
@@ -33,7 +30,7 @@ class ProductSearchService(
     fun search(q: String, sort: String, page: Int, size: Int): ProductSearchResponse {
         val query = q.trim()
         val ingredient = ingredientRepository.findByAliasKey(IngredientName.normalize(query))
-        val brand = brandAliasRepository.findByIdOrNull(BrandName.key(query))?.brandId?.let { brandRepository.findByIdOrNull(it) }
+        val brand = brandRepository.findByAliasKey(BrandName.key(query))
         val cond = ProductSearchCondition(
             query,
             ingredient?.id,

@@ -93,7 +93,7 @@ class ProductSearchRepository(private val jdbc: JdbcClient) {
             "LEFT JOIN (SELECT NULL::numeric AS daily_amount, NULL::varchar AS daily_unit) a ON true"
         }
         val order = when (sort) {
-            ProductSearchSort.RELEVANCE -> "p.text_match DESC, word_similarity(:q, p.name) DESC, p.reported_on DESC NULLS LAST"
+            ProductSearchSort.RELEVANCE -> "${brandFirst(cond)}p.text_match DESC, word_similarity(:q, p.name) DESC, p.reported_on DESC NULLS LAST"
             ProductSearchSort.LATEST -> "p.reported_on DESC NULLS LAST"
             ProductSearchSort.AMOUNT -> "${unitOrder(sortKey("a.daily_unit"))}${sortKey("a.daily_amount")} DESC NULLS LAST"
         }
@@ -112,11 +112,15 @@ class ProductSearchRepository(private val jdbc: JdbcClient) {
             .list()
     }
 
+    // 검색어가 브랜드면 그 브랜드 제품을 맨 앞에 둔다. 제품명에 브랜드 이름이 없는 제품("ATOMY …")은 유사도가 0에 가까워
+    // text_match만으로는 같은 그룹의 맨 뒤로 밀려 첫 페이지에 안 나온다.
+    private fun brandFirst(cond: ProductSearchCondition) = if (cond.brandId != null) "(p.brand_id = :brandId) DESC NULLS LAST, " else ""
+
     fun count(cond: ProductSearchCondition): Long =
         params(jdbc.sql("${hits(cond)} SELECT count(*) FROM hit"), cond).query(Long::class.java).single()
 
     // 검색에 걸린 제품과, 제품명·제조사·브랜드로 걸렸는지(text_match). 여러 경로로 걸리면 한 줄로 합친다.
-    // 브랜드는 제품명에 브랜드 이름이 없는 제품("ATOMY …" ↔ 애터미)을 찾으려고 더한다. 관련도는 제품명 일치와 같게 본다.
+    // 브랜드는 제품명에 브랜드 이름이 없는 제품("ATOMY …" ↔ 애터미)을 찾으려고 더한다. 관련도순에서는 브랜드 제품이 먼저다(brandFirst).
     // 상태 필터에 product JOIN이 필요하므로, 그때 응답 칼럼도 같이 가져와 본 쿼리에서 product를 다시 JOIN하지 않는다.
     private fun hits(cond: ProductSearchCondition): String {
         require(cond.searchable) { "검색 대상이 없음" }
