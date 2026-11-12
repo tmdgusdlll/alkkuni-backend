@@ -201,6 +201,26 @@ class ProductSearchApiTest(
     }
 
     @Test
+    fun `브랜드 표기로 검색하면 제품명에 브랜드 이름이 없는 그 브랜드 제품도 찾는다`() {
+        // V13: 애터미의 표기에 "ATOMY"가 있다. 제품명에 "애터미"가 없어 이름 검색으로는 안 걸린다.
+        val atomy = product("ATOMY 비타민C").also { linkBrand(it, "애터미") }
+        product("비타민C 1000") // 브랜드 없음
+
+        mvc.get("/api/products") { param("q", "애터미") }.andExpect {
+            status { isOk() }
+            jsonPath("$.data.totalCount") { value(1) }
+            jsonPath("$.data.matchedBrand.name") { value("애터미") }
+            jsonPath("$.data.items[*].id") { value(contains(atomy.toInt())) }
+            jsonPath("$.data.items[0].brand.name") { value("애터미") }
+        }
+        // 브랜드 표기가 아니면 matchedBrand는 null, 브랜드 없는 제품의 brand도 null
+        mvc.get("/api/products") { param("q", "비타민C") }.andExpect {
+            jsonPath("$.data.matchedBrand") { value(null as Any?) }
+            jsonPath("$.data.items[?(@.name == '비타민C 1000')].brand") { value(contains(null as Any?)) }
+        }
+    }
+
+    @Test
     fun `성공 응답만 60초 공개 캐시 헤더가 붙는다`() {
         mvc.get("/api/products") { param("q", "아연") }.andExpect {
             header { string("Cache-Control", "max-age=60, public") }
@@ -209,6 +229,10 @@ class ProductSearchApiTest(
             status { isBadRequest() }
             header { doesNotExist("Cache-Control") }
         }
+    }
+
+    private fun linkBrand(productId: Long, brandName: String) {
+        jdbc.update("UPDATE product SET brand_id = (SELECT id FROM brand WHERE name = ?) WHERE id = ?", brandName, productId)
     }
 
     private fun product(

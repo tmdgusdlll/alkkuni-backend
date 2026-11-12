@@ -3,6 +3,8 @@ package com.alkkuni.api.product
 import com.alkkuni.api.common.ApiException
 import com.alkkuni.api.common.ErrorCode
 import com.alkkuni.api.common.ErrorDetail
+import com.alkkuni.api.brand.refsOf
+import com.alkkuni.core.brand.repository.BrandRepository
 import com.alkkuni.core.ingredient.IngredientName
 import com.alkkuni.core.ingredient.repository.IngredientRepository
 import com.alkkuni.core.product.enums.ProductStatus
@@ -15,6 +17,7 @@ class ProductCompareService(
     private val productRepository: ProductRepository,
     private val productIngredientRepository: ProductIngredientRepository,
     private val ingredientRepository: IngredientRepository,
+    private val brandRepository: BrandRepository,
 ) {
 
     // "ids=5,"의 빈 원소는 null로 바인딩된다. Kotlin은 List<Long>의 원소 null을 검사하지 않아 Long?로 받는다.
@@ -50,7 +53,8 @@ class ProductCompareService(
                     .thenBy { row -> row.values.indexOfFirst { it.isNotEmpty() } },
             )
 
-        return ProductCompareResponse(products.map { it.toCompareProduct() }, ingredients)
+        val brands = brandRepository.refsOf(products.map { it.brandId })
+        return ProductCompareResponse(products.map { it.toCompareProduct(it.brandId?.let(brands::get)) }, ingredients)
     }
 
     companion object {

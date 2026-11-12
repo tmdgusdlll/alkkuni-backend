@@ -3,6 +3,8 @@ package com.alkkuni.api.product
 import com.alkkuni.api.common.ApiException
 import com.alkkuni.api.common.ErrorCode
 import com.alkkuni.api.common.ErrorDetail
+import com.alkkuni.api.brand.refsOf
+import com.alkkuni.core.brand.repository.BrandRepository
 import com.alkkuni.core.ingredient.repository.IngredientRepository
 import com.alkkuni.core.product.repository.ExploreBase
 import com.alkkuni.core.product.repository.ExploreReference
@@ -16,6 +18,7 @@ import java.math.BigDecimal
 class ProductExploreService(
     private val exploreRepository: ProductExploreRepository,
     private val ingredientRepository: IngredientRepository,
+    private val brandRepository: BrandRepository,
 ) {
 
     /**
@@ -24,11 +27,13 @@ class ProductExploreService(
      * - 목록 값("ingredient=5,")의 빈 원소는 null로 바인딩된다. 비교 API처럼 Long?로 받아 거절한다.
      * - meetsReference: 고른 성분 모두 1일 함량이 기준값 이상인 제품만. 기준값이 없는 성분이 있으면 거절한다
      *   (조용히 무시하면 확인하지 않은 성분까지 "충족"으로 보인다).
+     * - brand: 고른 브랜드 중 하나인 제품만. 없는 브랜드 id는 거절한다(오타로 빈 결과가 "제품 없음"처럼 보이지 않게).
      */
     fun explore(
         rawIngredientIds: List<Long?>,
         rawExcludeIds: List<Long?>,
         forms: List<String>,
+        rawBrandIds: List<Long?>,
         min: BigDecimal?,
         max: BigDecimal?,
         meetsReference: Boolean,
@@ -42,6 +47,11 @@ class ProductExploreService(
         if (min != null && max != null && min > max) invalid("min", "최솟값이 최댓값보다 클 수 없습니다.")
         val cleanForms = forms.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
         if (cleanForms.size > MAX_FORMS) invalid("form", "제형은 ${MAX_FORMS}개까지 고를 수 있습니다.")
+        val brandIds = rawBrandIds.filterNotNull()
+        if (brandIds.size != rawBrandIds.size || brandIds.size > MAX_BRANDS || brandIds.distinct().size != brandIds.size) {
+            invalid("brand", "서로 다른 브랜드를 ${MAX_BRANDS}개까지 골라 주세요.")
+        }
+        if (brandRepository.findAllById(brandIds).size != brandIds.size) invalid("brand", "없는 브랜드가 있습니다.")
 
         val found = ingredientRepository.findAllById(ingredientIds + excludeIds).associateBy { requireNotNull(it.id) }
         (ingredientIds + excludeIds).firstOrNull { it !in found }?.let { invalid(if (it in ingredientIds) "ingredient" else "exclude", "없는 성분입니다: $it") }
@@ -58,16 +68,17 @@ class ProductExploreService(
         } else {
             emptyList()
         }
-        val cond = ProductExploreCondition(ingredientIds, excludeIds, cleanForms, base, min, max, references)
+        val cond = ProductExploreCondition(ingredientIds, excludeIds, cleanForms, base, min, max, references, brandIds)
 
         val result = exploreRepository.find(cond, searchSort, page, size)
         val amounts = exploreRepository.amounts(result.content.map { it.id }, ingredientIds)
+        val brands = brandRepository.refsOf(result.content.map { it.brandId })
         return ProductExploreResponse(
             totalCount = result.totalElements,
             ingredients = ingredients.map { it.toExploreIngredient() },
             baseIngredientId = baseId,
             items = result.content.map { row ->
-                row.toExploreItem(ingredientIds.map { id -> ExploreItemAmount(id, amounts[row.id to id].orEmpty().map { it.toCompareAmount(found.getValue(id)) }) })
+                row.toExploreItem(row.brandId?.let(brands::get), ingredientIds.map { id -> ExploreItemAmount(id, amounts[row.id to id].orEmpty().map { it.toCompareAmount(found.getValue(id)) }) })
             },
         )
     }
@@ -101,5 +112,8 @@ class ProductExploreService(
 
         // 제형은 IN 하나라 비용과 상관없다. 제형 코드(로컬 14종)를 모두 골라도 되게 두고, 터무니없이 긴 목록만 막는다.
         private const val MAX_FORMS = 20
+
+        // 브랜드도 IN 하나다. 제형처럼 긴 목록만 막는다.
+        private const val MAX_BRANDS = 20
     }
 }

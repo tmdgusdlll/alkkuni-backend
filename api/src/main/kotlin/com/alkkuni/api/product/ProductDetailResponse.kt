@@ -1,5 +1,6 @@
 package com.alkkuni.api.product
 
+import com.alkkuni.api.brand.BrandRef
 import com.alkkuni.core.ingredient.entity.Ingredient
 import com.alkkuni.core.product.entity.Product
 import com.alkkuni.core.product.entity.ProductIngredient
@@ -15,6 +16,8 @@ data class ProductDetailResponse(
     val reportNo: String,
     val name: String,
     val manufacturer: String?,
+    // 제품명에서 찾은 브랜드. 없으면 null(대부분)
+    val brand: BrandRef?,
     val form: String?,
     val reportedOn: LocalDate?,
     val intakeMethod: String?,
@@ -65,11 +68,12 @@ data class DetailRecall(
     val listStatus: RecallListStatus,
 )
 
-fun Product.toDetailResponse(ingredients: List<DetailIngredient>, recalls: List<DetailRecall>) = ProductDetailResponse(
+fun Product.toDetailResponse(brand: BrandRef?, ingredients: List<DetailIngredient>, recalls: List<DetailRecall>) = ProductDetailResponse(
     id = requireNotNull(id),
     reportNo = reportNo,
     name = name,
     manufacturer = manufacturer,
+    brand = brand,
     form = form,
     reportedOn = reportedOn,
     intakeMethod = intakeMethod,

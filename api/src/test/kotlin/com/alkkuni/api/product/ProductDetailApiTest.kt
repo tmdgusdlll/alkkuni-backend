@@ -62,6 +62,15 @@ class ProductDetailApiTest(
     }
 
     @Test
+    fun `브랜드를 붙인다`() {
+        val id = product("ATOMY 아연").also { linkBrand(it, "애터미") }
+
+        mvc.get("/api/products/$id").andExpect {
+            jsonPath("$.data.brand.name") { value("애터미") }
+        }
+    }
+
+    @Test
     fun `사전에 연결된 성분은 사전 표시명을 쓴다`() {
         val id = product("A")
         ingredient(id, "아연", "8", rawName = "아연(Zn)")
@@ -143,6 +152,10 @@ class ProductDetailApiTest(
         mvc.get("/api/products/compare").andExpect {
             status { isBadRequest() }
         }
+    }
+
+    private fun linkBrand(productId: Long, brandName: String) {
+        jdbc.update("UPDATE product SET brand_id = (SELECT id FROM brand WHERE name = ?) WHERE id = ?", brandName, productId)
     }
 
     private fun product(
