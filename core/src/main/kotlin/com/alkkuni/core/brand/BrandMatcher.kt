@@ -1,11 +1,12 @@
 package com.alkkuni.core.brand
 
 // 브랜드 표기의 사전 키. 공백을 지우고 대문자로 바꾼다("Coleology Cut" → "COLEOLOGYCUT").
-// data/brand-tools의 파이썬 key와 같은 규칙이다. 바꾸면 V13 표기 키도 다시 만든다.
+// 이 규칙이 기준이다. 사전 키를 만든 파이썬 도구(로컬 data/, Git 제외)도 같은 규칙이고, 바꾸면 V13 표기 키도 다시 만든다.
+// (?U): Java의 \s는 기본으로 ASCII 공백만 잡는다. 파이썬처럼 NBSP(U+00A0)·전각 공백(U+3000)도 공백으로 본다.
 object BrandName {
-    private val leadingBracket = Regex("""^[\[(<【]\s*""")
-    private val wordEnd = Regex("""[\s()\[\]<>【】,/+&_·]""")
-    private val spaces = Regex("""\s+""")
+    private val leadingBracket = Regex("""(?U)^[\[(<【]\s*""")
+    private val wordEnd = Regex("""(?U)[\s()\[\]<>【】,/+&_·]""")
+    private val spaces = Regex("""(?U)\s+""")
 
     fun key(s: String): String = s.replace(spaces, "").uppercase()
 

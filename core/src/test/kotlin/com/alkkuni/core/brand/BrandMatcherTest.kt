@@ -34,6 +34,14 @@ class BrandMatcherTest {
     }
 
     @Test
+    fun `NBSP·전각 공백도 공백으로 본다`() {
+        // 식약처 제품명 27개에 NBSP가 있다. 공백으로 안 보면 "종근당"으로 잘못 연결된다
+        assertEquals(2L, matcher.find("종근당 바이오 발효홍삼"))
+        assertEquals(2L, matcher.find("종근당　바이오 발효홍삼"))
+        assertEquals(4L, matcher.find("필리 비타민C"))
+    }
+
+    @Test
     fun `첫 단어 전용 표기는 띄어 쓴 경우만 맞는다`() {
         assertEquals(4L, matcher.find("필리 비타민C"))
         assertNull(matcher.find("필리브 면역 비타민C"))
