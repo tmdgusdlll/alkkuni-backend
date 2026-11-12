@@ -122,6 +122,14 @@ class Product(
     var precautions: String? = null
         protected set
 
+    // 제품명으로 찾은 브랜드(BrandMatcher). 제품명에 브랜드가 없으면 NULL이다(대부분). 제조사(manufacturer)와 다르다.
+    var brandId: Long? = null
+        protected set
+
+    fun linkBrand(brandId: Long?) {
+        this.brandId = brandId
+    }
+
     // 기준규격(standardText)과 그로부터 정하는 값(판정, 원료 여부, 판정 버전, 섭취방법 파싱, 분모 확인)은 applyParse로만 바꾼다.
     // 규칙이 바뀌어 다시 판정할 때 applyParse 하나만 부르면 모두 새 규칙으로 맞춰진다.
     fun updateSource(

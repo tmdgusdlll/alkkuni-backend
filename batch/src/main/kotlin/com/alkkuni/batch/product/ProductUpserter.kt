@@ -1,5 +1,6 @@
 package com.alkkuni.batch.product
 
+import com.alkkuni.batch.brand.BrandDictionary
 import com.alkkuni.batch.ingredient.IngredientDictionary
 import com.alkkuni.core.parser.IngredientAmountParser
 import com.alkkuni.core.product.entity.Product
@@ -21,6 +22,7 @@ class ProductUpserter(
     private val productRepository: ProductRepository,
     private val productIngredientRepository: ProductIngredientRepository,
     private val dictionary: IngredientDictionary,
+    private val brands: BrandDictionary,
 ) {
     /** 한 페이지를 한 트랜잭션으로 저장한다. 바뀌어서 다시 쓴 제품 수를 돌려준다. */
     @Transactional
@@ -52,6 +54,7 @@ class ProductUpserter(
                     row.name, row.manufacturer, row.intakeMethod, row.sourceHash, row.sourceUpdatedAt,
                     row.form, row.reportedOn, row.functionalMaterials, row.functionality, row.precautions,
                 )
+                linkBrand(brands.find(row.name))
             }
             val result = IngredientAmountParser.parse(row.standardText ?: "")
             val reparsed = product.applyParse(row.standardText, result)

@@ -147,6 +147,22 @@ class ProductUpserterTest(
         )
     }
 
+    // 브랜드 사전은 V13 초기 데이터를 쓴다(TRUNCATE 대상이 아니다)
+    @Test
+    fun `적재할 때 제품명으로 브랜드를 연결하고 이름이 바뀌면 다시 연결한다`() {
+        upserter.upsert(listOf(row("A", VITAMIN, name = "애터미 비타민C")))
+        assertEquals("애터미", brandOf("A"))
+
+        upserter.upsert(listOf(row("A", VITAMIN, name = "종근당(鍾根堂)바이오 비타민C")))
+        assertEquals("종근당바이오", brandOf("A"))
+    }
+
+    private fun brandOf(reportNo: String) = jdbc.queryForObject(
+        "SELECT b.name FROM product p LEFT JOIN brand b ON b.id = p.brand_id WHERE p.report_no = ?",
+        String::class.java,
+        reportNo,
+    )
+
     private fun counts() =
         jdbc.queryForObject("SELECT count(*) FROM product", Int::class.java)!! to
             jdbc.queryForObject("SELECT count(*) FROM product_ingredient", Int::class.java)!!
