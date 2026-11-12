@@ -232,6 +232,17 @@ class ProductSearchApiTest(
     }
 
     @Test
+    fun `검색어가 브랜드면 그 브랜드 제품끼리는 제품명 유사도 대신 최신순이다`() {
+        // 실제 "애터미" 검색: 걸리는 제품이 모두 애터미 제품이라, 유사도로 정렬하면 이름에 "애터미"가 없는 ATOMY 제품이 전부 뒤로 간다.
+        val oldNamed = product("애터미 헤모힘", reportedOn = LocalDate.of(2018, 1, 1)).also { linkBrand(it, "애터미") }
+        val newEnglish = product("ATOMY 비타민C", reportedOn = LocalDate.of(2024, 1, 1)).also { linkBrand(it, "애터미") }
+
+        mvc.get("/api/products") { param("q", "애터미") }.andExpect {
+            jsonPath("$.data.items[*].id") { value(contains(newEnglish.toInt(), oldNamed.toInt())) }
+        }
+    }
+
+    @Test
     fun `성공 응답만 60초 공개 캐시 헤더가 붙는다`() {
         mvc.get("/api/products") { param("q", "아연") }.andExpect {
             header { string("Cache-Control", "max-age=60, public") }

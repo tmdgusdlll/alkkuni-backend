@@ -93,7 +93,7 @@ class ProductSearchRepository(private val jdbc: JdbcClient) {
             "LEFT JOIN (SELECT NULL::numeric AS daily_amount, NULL::varchar AS daily_unit) a ON true"
         }
         val order = when (sort) {
-            ProductSearchSort.RELEVANCE -> "${brandFirst(cond)}p.text_match DESC, word_similarity(:q, p.name) DESC, p.reported_on DESC NULLS LAST"
+            ProductSearchSort.RELEVANCE -> "${brandFirst(cond)}p.text_match DESC, ${similarity(cond)} DESC, p.reported_on DESC NULLS LAST"
             ProductSearchSort.LATEST -> "p.reported_on DESC NULLS LAST"
             ProductSearchSort.AMOUNT -> "${unitOrder(sortKey("a.daily_unit"))}${sortKey("a.daily_amount")} DESC NULLS LAST"
         }
@@ -112,9 +112,13 @@ class ProductSearchRepository(private val jdbc: JdbcClient) {
             .list()
     }
 
-    // 검색어가 브랜드면 그 브랜드 제품을 맨 앞에 둔다. 제품명에 브랜드 이름이 없는 제품("ATOMY …")은 유사도가 0에 가까워
-    // text_match만으로는 같은 그룹의 맨 뒤로 밀려 첫 페이지에 안 나온다.
+    // 검색어가 브랜드면 그 브랜드 제품을 맨 앞에 두고, 그 안에서는 제품명 유사도를 보지 않는다(같은 값 → 최신순).
+    // 제품명에 브랜드 이름이 없는 제품("ATOMY …")은 유사도가 0에 가까워, 유사도로 정렬하면 브랜드 제품 중 맨 뒤로 밀린다
+    // (로컬 "애터미" 347개 중 107개가 241위 이후).
     private fun brandFirst(cond: ProductSearchCondition) = if (cond.brandId != null) "(p.brand_id = :brandId) DESC NULLS LAST, " else ""
+
+    private fun similarity(cond: ProductSearchCondition) =
+        if (cond.brandId != null) "CASE WHEN p.brand_id = :brandId THEN 1 ELSE word_similarity(:q, p.name) END" else "word_similarity(:q, p.name)"
 
     fun count(cond: ProductSearchCondition): Long =
         params(jdbc.sql("${hits(cond)} SELECT count(*) FROM hit"), cond).query(Long::class.java).single()
