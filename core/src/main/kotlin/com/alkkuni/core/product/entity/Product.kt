@@ -126,6 +126,11 @@ class Product(
     var brandId: Long? = null
         protected set
 
+    // 수출용 제품(V14 생성 칼럼, 제품명 표기로 DB가 계산). 정렬에서 국내 제품 뒤로 보낼 때만 읽는다.
+    @Column(insertable = false, updatable = false)
+    var exportOnly: Boolean = false
+        protected set
+
     fun linkBrand(brandId: Long?) {
         this.brandId = brandId
     }

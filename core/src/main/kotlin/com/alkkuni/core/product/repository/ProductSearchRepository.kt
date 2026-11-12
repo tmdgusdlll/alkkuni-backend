@@ -102,7 +102,8 @@ class ProductSearchRepository(private val jdbc: JdbcClient) {
             SELECT p.id, p.name, p.manufacturer, p.form, p.reported_on, p.basis_check, p.parse_status, p.brand_id, a.daily_amount, a.daily_unit
             FROM hit p
             $amount
-            ORDER BY $order, p.id DESC
+            -- 수출용 제품(V14)은 어느 정렬이든 국내 제품 뒤다.
+            ORDER BY p.export_only, $order, p.id DESC
             LIMIT :limit OFFSET :offset
         """
         return params(jdbc.sql(sql), cond)
@@ -141,7 +142,7 @@ class ProductSearchRepository(private val jdbc: JdbcClient) {
         )
         return """
             WITH hit AS (
-                SELECT p.id, p.name, p.manufacturer, p.form, p.reported_on, p.basis_check, p.parse_status, p.brand_id,
+                SELECT p.id, p.name, p.manufacturer, p.form, p.reported_on, p.basis_check, p.parse_status, p.brand_id, p.export_only,
                        bool_or(h.text_match) AS text_match
                 FROM (${sources.joinToString(" UNION ALL ")}) h
                 JOIN product p ON p.id = h.id

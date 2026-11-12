@@ -102,6 +102,8 @@ class ProductExploreRepository(
                 ).from(entity(Product::class))
                     .whereAnd(*predicates(cond))
                     .orderBy(
+                        // 수출용 제품(V14)은 어느 정렬이든 국내 제품 뒤다.
+                        path(Product::exportOnly).asc(),
                         *when (sort) {
                             ProductExploreSort.AMOUNT -> amountOrder(cond.base)
                             ProductExploreSort.LATEST -> arrayOf(path(Product::reportedOn).desc().nullsLast())

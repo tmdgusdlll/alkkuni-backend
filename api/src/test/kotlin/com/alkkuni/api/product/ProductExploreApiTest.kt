@@ -316,6 +316,18 @@ class ProductExploreApiTest(
         }
     }
 
+    @Test
+    fun `수출용 제품은 함량순·최신순 모두 국내 제품 뒤에 온다`() {
+        val export = product("아연 골드 <전량수출용>", reportedOn = LocalDate.of(2026, 1, 1)).also { has(it, "아연", "30") }
+        val domestic = product("아연 베이직", reportedOn = LocalDate.of(2020, 1, 1)).also { has(it, "아연", "8") }
+
+        for (sort in listOf("amount", "latest")) {
+            mvc.get("/api/products/explore") { param("ingredient", "${id("아연")}"); param("sort", sort) }.andExpect {
+                jsonPath("$.data.items[*].id") { value(contains(domestic.toInt(), export.toInt())) }
+            }
+        }
+    }
+
     private fun id(name: String): Long = jdbc.queryForObject("SELECT id FROM ingredient WHERE name = ?", Long::class.java, name)!!
 
     private fun linkBrand(productId: Long, brandName: String) {

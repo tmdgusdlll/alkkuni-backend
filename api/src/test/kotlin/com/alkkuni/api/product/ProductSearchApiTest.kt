@@ -1,6 +1,7 @@
 package com.alkkuni.api.product
 
 import org.hamcrest.Matchers.contains
+import org.hamcrest.Matchers.containsInAnyOrder
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -239,6 +240,33 @@ class ProductSearchApiTest(
 
         mvc.get("/api/products") { param("q", "애터미") }.andExpect {
             jsonPath("$.data.items[*].id") { value(contains(newEnglish.toInt(), oldNamed.toInt())) }
+        }
+    }
+
+    @Test
+    fun `수출용 제품은 어느 정렬이든 국내 제품 뒤에 온다`() {
+        // 최신이고 이름도 더 비슷한 수출용 제품들. 표기는 "수출용"·"전량수출용"·괄호 안 국가명.
+        val exportWord = product("애터미 석류미인(전량수출용)", reportedOn = LocalDate.of(2026, 7, 1)).also { linkBrand(it, "애터미") }
+        val exportCountry = product("애터미 석류미인 (영국, 독일)", reportedOn = LocalDate.of(2026, 7, 2)).also { linkBrand(it, "애터미") }
+        val domestic = product("애터미 헤모힘", reportedOn = LocalDate.of(2018, 1, 1)).also { linkBrand(it, "애터미") }
+
+        for (sort in listOf("relevance", "latest")) {
+            mvc.get("/api/products") { param("q", "애터미"); param("sort", sort) }.andExpect {
+                jsonPath("$.data.items[0].id") { value(domestic.toInt()) }
+                jsonPath("$.data.items[*].id") { value(containsInAnyOrder(domestic.toInt(), exportWord.toInt(), exportCountry.toInt())) }
+            }
+        }
+    }
+
+    @Test
+    fun `수출겸용·수출명·원산지 표기는 수출용으로 보지 않는다`() {
+        val dualUse = product("다이어트 유산균 (수출겸용)", reportedOn = LocalDate.of(2020, 1, 1))
+        val exportName = product("혼합 유산균(수출명:Rofit)", reportedOn = LocalDate.of(2020, 1, 2))
+        val origin = product("유산균 크릴오일(호주산)", reportedOn = LocalDate.of(2020, 1, 3))
+        val export = product("유산균 골드(수출용)", reportedOn = LocalDate.of(2026, 1, 1))
+
+        mvc.get("/api/products") { param("q", "유산균"); param("sort", "latest") }.andExpect {
+            jsonPath("$.data.items[*].id") { value(contains(origin.toInt(), exportName.toInt(), dualUse.toInt(), export.toInt())) }
         }
     }
 
