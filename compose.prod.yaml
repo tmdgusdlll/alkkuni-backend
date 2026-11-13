@@ -3,9 +3,18 @@
 #
 # 띄우기:   docker compose -f compose.prod.yaml up -d
 # 배포:     docker compose -f compose.prod.yaml pull api && docker compose -f compose.prod.yaml up -d --no-deps api  (down은 쓰지 않는다)
-# 배치:     docker compose -f compose.prod.yaml run --rm batch --alkkuni.job=initial-load
+# 배치:     docker compose -f compose.prod.yaml run --rm --no-deps batch --alkkuni.job=initial-load
+#           api가 healthy(Flyway 끝)인 뒤에만 돌린다(batch는 validate만 한다). depends_on으로 걸면 run이 api를 다시 만들거나
+#           api가 unhealthy일 때 배치가 안 돌아서, 순서는 deploy.yml·cron이 헬스를 확인해 지킨다.
 #
 # ponytail: mem_limit은 t4g.small(2GB)에 맞춘 첫 추정값이다. batch 실행 중 docker stats·swap 피크를 재서 고친다(PROGRESS.md 기본 배포).
+# 로그 회전. 기본 json-file은 끝없이 쌓여 EBS가 차면 DB 쓰기·배포가 멈춘다.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
+
 services:
   nginx:
     image: nginx:1.29-alpine
@@ -15,15 +24,17 @@ services:
       - ./deploy/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
     restart: unless-stopped
     mem_limit: 64m
+    logging: *logging
 
   api:
     image: ${IMAGE_REGISTRY:-alkkuni}/alkkuni-api:${API_TAG:-latest}
     environment: &app-env
       # 공통 yaml의 기본 프로필이 local이라 빠지면 localhost DB로 접속한다.
       SPRING_PROFILES_ACTIVE: prod
-      DB_URL: jdbc:postgresql://db:5432/${DB_NAME}
-      DB_USERNAME: ${DB_USERNAME}
-      DB_PASSWORD: ${DB_PASSWORD}
+      DB_URL: jdbc:postgresql://db:5432/${DB_NAME:?}
+      # :? 는 값이 없으면 compose 단계에서 실패한다(빈 값으로 기동하지 않게).
+      DB_USERNAME: ${DB_USERNAME:?}
+      DB_PASSWORD: ${DB_PASSWORD:?}
     depends_on:
       db:
         condition: service_healthy
@@ -34,31 +45,33 @@ services:
       start_period: 60s
       retries: 5
     restart: unless-stopped
+    # Spring graceful shutdown(30초) 동안 처리 중인 요청을 마치게 한다. 기본 10초면 먼저 SIGKILL이 간다.
+    stop_grace_period: 30s
     mem_limit: 640m
+    logging: *logging
 
-  # up -d로는 뜨지 않는다(profiles). run으로 작업 하나를 돌리고 끝난다.
-  # api가 healthy여야 Flyway 마이그레이션이 끝난 상태다(batch는 validate만 한다).
+  # up -d로는 뜨지 않는다(profiles). run --rm --no-deps로 작업 하나를 돌리고 끝난다(위 "배치" 참고).
   batch:
     image: ${IMAGE_REGISTRY:-alkkuni}/alkkuni-batch:${BATCH_TAG:-latest}
     profiles: [job]
     environment:
       <<: *app-env
-      FOODSAFETY_API_KEY: ${FOODSAFETY_API_KEY}
+      FOODSAFETY_API_KEY: ${FOODSAFETY_API_KEY:?}
       # ponytail: 운영 원본은 S3에 둬야 한다(REVIEW.md). S3 RawStore 전까지 호스트 볼륨에 남긴다.
       RAW_STORE_DIR: /app/data/raw
     volumes:
       - raw-data:/app/data/raw
-    depends_on:
-      api:
-        condition: service_healthy
+    stop_grace_period: 30s
     mem_limit: 640m
+    logging: *logging
 
   db:
-    image: postgres:17-alpine
+    # 로컬 compose.yaml·Testcontainers와 같은 이미지(glibc). alpine(musl)은 문자열 정렬이 달라 테스트와 운영 순서가 갈린다.
+    image: postgres:17
     environment:
-      POSTGRES_DB: ${DB_NAME}
-      POSTGRES_USER: ${DB_USERNAME}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME:?}
+      POSTGRES_USER: ${DB_USERNAME:?}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?}
     volumes:
       - db-data:/var/lib/postgresql/data
     healthcheck:
@@ -68,6 +81,7 @@ services:
       retries: 10
     restart: unless-stopped
     mem_limit: 512m
+    logging: *logging
 
 volumes:
   db-data:

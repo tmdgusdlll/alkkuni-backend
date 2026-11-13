@@ -9,5 +9,6 @@ RUN addgroup -S app && adduser -S app -G app && mkdir -p /app/data/raw && chown 
 COPY --chown=app:app ${MODULE}/build/libs/${MODULE}.jar app.jar
 USER app
 EXPOSE 8080
-# 힙은 컨테이너 메모리 제한(mem_limit)의 75%. 제한이 없으면 호스트 메모리 기준이 되니 compose에서 꼭 건다.
-ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75.0", "-jar", "/app/app.jar"]
+# 힙은 컨테이너 메모리 제한(mem_limit)의 60%. 나머지는 힙 밖(metaspace·코드 캐시·스레드 스택) 몫이다.
+# 75%면 640m에서 여유가 160MB뿐이라 커널 OOM(exit 137)이 날 수 있다. 제한이 없으면 호스트 메모리 기준이 되니 compose에서 꼭 건다.
+ENTRYPOINT ["java", "-XX:MaxRAMPercentage=60.0", "-jar", "/app/app.jar"]

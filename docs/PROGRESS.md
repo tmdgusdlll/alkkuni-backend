@@ -154,10 +154,12 @@
 ## 작업 로그
 
 ### 2026-11-13
-- Dockerfile·운영 compose·Nginx(`chore/dockerfile`). 기본 배포의 첫 단위다.
-  - `Dockerfile`: `eclipse-temurin:21-jre-alpine`(툴체인 21, arm64 지원), 비루트 `app`, `-XX:MaxRAMPercentage=75.0`. 프로필은 이미지에 넣지 않고 compose에서 준다(같은 이미지를 로컬에서도 띄움). 헬스 체크는 api에만 필요해 compose에 뒀다(batch는 웹 서버 없이 끝나는 컨테이너).
-  - `compose.prod.yaml`: nginx·api·db 상주, batch는 `profiles: [job]`이라 `run --rm batch --alkkuni.job=…`으로만 돈다. batch는 api가 healthy(Flyway 끝)여야 뜬다. `mem_limit` nginx 64m·api 640m·batch 640m·db 512m는 첫 추정값이고 실측으로 고친다. 원본은 S3 `RawStore` 전까지 `raw-data` 볼륨.
-  - 로컬 확인(arm64, 별도 compose 프로젝트): prod 프로필로 기동, Flyway V1~V15 적용, Nginx를 거친 `/actuator/health` UP·`/api/categories` 200·`/` 502(web 없음), batch `link-categories` 정상 종료, 볼륨 쓰기 권한(app 사용자) 확인. JVM 힙 상한 480MB(640MB의 75%). 유휴 메모리 api 317MB·db 47MB·nginx 11MB. 이미지 api 406MB·batch 386MB.
+- Dockerfile·운영 compose·Nginx(`chore/dockerfile`, PR #36). 기본 배포의 첫 단위다.
+  - `Dockerfile`: `eclipse-temurin:21-jre-alpine`(툴체인 21, arm64 지원), 비루트 `app`, `-XX:MaxRAMPercentage=60.0`(리뷰 반영, 아래). 프로필은 이미지에 넣지 않고 compose에서 준다(같은 이미지를 로컬에서도 띄움). 헬스 체크는 api에만 필요해 compose에 뒀다(batch는 웹 서버 없이 끝나는 컨테이너).
+  - `compose.prod.yaml`: nginx·api·db 상주, batch는 `profiles: [job]`이라 `run --rm --no-deps batch --alkkuni.job=…`으로만 돈다. api가 healthy(Flyway 끝)인 뒤에 돌리는 순서는 `deploy.yml`·cron이 지킨다. `mem_limit` nginx 64m·api 640m·batch 640m·db 512m는 첫 추정값이고 실측으로 고친다. 원본은 S3 `RawStore` 전까지 `raw-data` 볼륨.
+  - 로컬 확인(arm64, 별도 compose 프로젝트): prod 프로필로 기동, Flyway V1~V15 적용, Nginx를 거친 `/actuator/health` UP·`/api/categories` 200·`/` 502(web 없음), batch `link-categories` 정상 종료, 볼륨 쓰기 권한(app 사용자) 확인. JVM 힙 상한 384MB(640MB의 60%). 유휴 메모리 api 317MB·db 47MB·nginx 11MB. 이미지 api 406MB·batch 386MB.
+  - `/code-review` 반영: 힙 75% → 60%(640m에서 힙 밖 여유가 160MB뿐이라 커널 OOM 위험), 로그 회전(`max-size 10m`·3개), 운영 DB `postgres:17-alpine` → `postgres:17`(테스트와 같은 glibc 정렬), 필수 변수 `${…:?}`(빈 값이면 compose 단계에서 실패, 로컬로 확인), batch의 `depends_on: api` 제거와 `run --no-deps`(배치 실행이 api를 다시 만들거나, api unhealthy 때 배치가 막히지 않게), `stop_grace_period: 30s`(Spring graceful shutdown 30초).
+  - 의도됨으로 둔 것: db `shm_size`(4.6만 건이라 64MB로 충분, shm은 메모리 한도에 들어가 늘리면 2GB 예산을 쓴다. "could not resize shared memory"가 보이면 올린다), `mem_limit` 합계 1,856MB(실측 대상, 힙을 낮춰 위험은 줄었다), jar 레이어 분리(`deploy.yml` PR에서 분리 전후 ECR push 크기를 재고 넣는다), 포트 80 전체 바인딩(보안 그룹이 막고 CloudFront 때 prefix list로 연다).
 - 기능성으로 찾기(`feat/category-filter`, PR #35). 원래 의도는 "성분을 몰라도 눈 건강 제품을 쇼핑"이라, `category=`를 성분 목록 안의 필터로만 두지 않고 `/explore`의 `ingredient`를 선택으로 바꿨다(성분·카테고리 중 하나 필수). 카테고리만 고르면 최신순이고 함량 조건은 400, 항목에 `functionalMaterials`·`categories`를 붙인다. 카테고리 목록 API(`GET /api/categories`), 비교·상세 응답 `categories`. 결정은 PLANNING.md "기능성으로 찾기".
   - 카테고리는 하나만, 검색 API에는 붙이지 않음(2026-11-13 사용자 확인). 인기순은 아직 없어(계획만 있음) 인기 순위 작업 때 제품별 조회 카운트로 붙인다.
   - `product_category` 조회용 엔티티(`ProductCategory`, 복합 키)를 core에 뒀다. 쓰기는 지금처럼 batch `CategoryLinker`(JDBC)만 한다.
