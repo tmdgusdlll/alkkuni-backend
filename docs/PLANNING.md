@@ -99,7 +99,7 @@
 | 화면 | API(안) | 쿼리 |
 |---|---|---|
 | 검색 | `GET /api/products?q=&sort=` | 네이티브 SQL(pg_trgm). 조건이 고정이고 유사도 함수는 JPQL로 표현할 수 없다 |
-| 성분별 제품 목록 | `GET /api/products/explore?ingredient=&exclude=&form=&min=&max=&sort=` (성분 고르기는 `GET /api/ingredients`) | Kotlin JDSL. 선택 조건이 많고 `EXISTS`·`NOT EXISTS`가 반복된다. 함량순은 ORDER BY 상관 서브쿼리 |
+| 성분별 제품 목록 | `GET /api/products/explore?ingredient=&category=&exclude=&form=&min=&max=&sort=` (성분 고르기는 `GET /api/ingredients`, 카테고리는 `GET /api/categories`) | Kotlin JDSL. 선택 조건이 많고 `EXISTS`·`NOT EXISTS`가 반복된다. 함량순은 ORDER BY 상관 서브쿼리 |
 | 제품 비교 | `GET /api/products/compare?ids=` | 고정 쿼리(JPA) |
 
 **검색**: 필터 없이 정렬만 둔다(관련도순, 최신 신고순, 성분 함량 높은순). 함량순은 검색어가 성분과 일치할 때만 켠다.
@@ -120,9 +120,15 @@
 | 단일/복합 원료 | I0030 `INDIV_RAWMTRL_NM`(기능성 원료 목록) | 수집함(`product.functional_materials`). 단일/복합 판정 규칙 |
 | 제형 | I0030 `PRDT_SHAP_CD_NM`(정·캡슐·분말·액상 등 코드값 14종) | 수집함(`product.form`) |
 | 브랜드 | I0030에 없음. `BSSH_NM`은 위탁생산 제조사다(예: "여에스더" 제품의 제조사가 10곳 넘음) | 브랜드 사전 |
-| 기능성(눈·간·혈당·체지방 등) | I0030 `PRIMARY_FNCLTY`는 자유 문장이라 키워드로 거르면 틀린다("간"이 "간혹"에 걸림) | 수집함. 판정은 고시 문구 단위 어간 규칙(`FunctionalCategory`, 24개, 영양소 기능 문구 제외), 저장은 `product_category`(V15, 2026-11-13). 필터·목록 API는 다음 PR |
+| 기능성(눈·간·혈당·체지방 등) | I0030 `PRIMARY_FNCLTY`는 자유 문장이라 키워드로 거르면 틀린다("간"이 "간혹"에 걸림) | 수집함. 판정은 고시 문구 단위 어간 규칙(`FunctionalCategory`, 24개, 영양소 기능 문구 제외), 저장은 `product_category`(V15, 2026-11-13). 필터 `category=`(하나만)·카테고리 목록 API(`GET /api/categories`) 구현(2026-11-13, 아래 "기능성으로 찾기") |
 | 1일 기준 충족 | 기준값 없음 | 성분별 기준값 |
 | 회수 제품 제외 | `recall` 매칭 전 | 회수 매칭 뒤 |
+
+**기능성으로 찾기** (2026-11-13): 성분을 몰라도 "눈 건강" 같은 기능성으로 제품을 고르게 한다. 새 API 없이 성분별 제품 목록(`/explore`)이 성분 또는 카테고리 하나만 있어도 목록을 낸다.
+- 카테고리는 하나만 고른다(입구 역할). 여러 개를 고르면 교집합·합집합을 정해야 하는데 쓰임이 없다. 검색 API에는 붙이지 않는다(검색은 정렬만).
+- 성분 없이 카테고리만 고르면 기준 성분이 없어 함량순·함량 범위·기준 충족을 거절(400)하고 기본 정렬은 최신 신고순이다. 응답의 `ingredients`·`amounts`는 비고 `baseIngredientId`는 null이다. 대신 항목마다 기능성 원료 원문(`functionalMaterials`)과 `categories`를 붙여 어떤 원료 제품인지 보이게 한다. 성분을 하나 고르면 지금처럼 함량순 비교로 좁혀진다.
+- 카테고리 목록은 `FunctionalCategory` 순서 24개 전부이고 제품이 없어도 0으로 낸다. 목록·비교·상세 응답에 `categories`를 붙인다.
+- 인기순(많이 본 순) 정렬은 인기 순위 작업 때 제품별 조회 카운트를 함께 만들어 붙인다(아래 "메인 인기 성분"은 성분 단위라 그대로 쓸 수 없다). 배포 전에는 조회 데이터가 없어 최신순과 같다.
 
 **제품 비교**: 2~3개를 담아 성분을 행, 제품을 열로 놓는다. 성분마다 기준 대비 %와 충족·미달을 표시하고, 가장 많은 값을 강조한다. 없는 성분은 "-". 목록·제품 검색에서 "추가"로 하나씩 담고 빼며, 3개가 찬 뒤 더 담으려 하면 "3개까지만 비교할 수 있어요"를 보여준다. 1개만 담았을 때는 API를 부르지 않는다(2026-11-11).
 

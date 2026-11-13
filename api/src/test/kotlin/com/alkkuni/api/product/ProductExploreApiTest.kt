@@ -344,6 +344,95 @@ class ProductExploreApiTest(
         }
     }
 
+    @Test
+    fun `카테고리만 고르면 그 기능성 제품 전체를 최신순으로 내고 성분 열은 비어 있다`() {
+        val old = product("A", reportedOn = LocalDate.of(2020, 1, 1), functionalMaterials = "루테인(고시형)").also { categorize(it, "EYE") }
+        val new = product("B", reportedOn = LocalDate.of(2026, 1, 1)).also { categorize(it, "EYE", "FATIGUE") }
+        product("C").also { categorize(it, "LIVER") }
+        product("D") // 카테고리 없음
+
+        mvc.get("/api/products/explore") { param("category", "EYE") }.andExpect {
+            status { isOk() }
+            jsonPath("$.data.totalCount") { value(2) }
+            jsonPath("$.data.items[*].id") { value(contains(new.toInt(), old.toInt())) }
+            jsonPath("$.data.ingredients") { isEmpty() }
+            jsonPath("$.data.baseIngredientId") { value(null as Any?) }
+            jsonPath("$.data.items[0].amounts") { isEmpty() }
+            // 성분을 모르는 사용자가 어떤 원료인지 보도록 기능성 원료 원문과 카테고리를 붙인다.
+            jsonPath("$.data.items[0].categories[*].code") { value(contains("EYE", "FATIGUE")) }
+            jsonPath("$.data.items[1].functionalMaterials") { value("루테인(고시형)") }
+        }
+    }
+
+    @Test
+    fun `카테고리와 성분을 함께 고르면 둘 다 맞는 제품을 함량순으로 낸다`() {
+        val high = product("A").also { has(it, "아연", "10"); categorize(it, "EYE") }
+        val low = product("B").also { has(it, "아연", "5"); categorize(it, "EYE") }
+        product("C").also { has(it, "아연", "20") } // 눈 아님
+        product("D").also { categorize(it, "EYE") } // 아연 없음
+
+        mvc.get("/api/products/explore") { param("category", "EYE"); param("ingredient", "${id("아연")}") }.andExpect {
+            jsonPath("$.data.items[*].id") { value(contains(high.toInt(), low.toInt())) }
+            jsonPath("$.data.baseIngredientId") { value(id("아연").toInt()) }
+        }
+    }
+
+    @Test
+    fun `성분 없이는 함량 조건을 쓸 수 없고 성분과 카테고리가 모두 없으면 400이다`() {
+        fun expectField(field: String, vararg params: Pair<String, String>) =
+            mvc.get("/api/products/explore") { params.forEach { (k, v) -> param(k, v) } }.andExpect {
+                status { isBadRequest() }
+                jsonPath("$.error.details[0].field") { value(field) }
+            }
+
+        expectField("ingredient")
+        expectField("category", "category" to "NOSE")
+        expectField("category", "category" to "eye")
+        expectField("sort", "category" to "EYE", "sort" to "amount")
+        expectField("min", "category" to "EYE", "min" to "1")
+        expectField("meetsReference", "category" to "EYE", "meetsReference" to "true")
+    }
+
+    @Test
+    fun `빈 sort와 빈 category는 고르지 않은 것으로 본다`() {
+        val high = product("A").also { has(it, "아연", "10") }
+        val low = product("B", reportedOn = LocalDate.of(2026, 1, 1)).also { has(it, "아연", "5") }
+
+        // sort= 는 예전처럼 기본값(성분이 있으면 함량순)이다.
+        mvc.get("/api/products/explore") { param("ingredient", "${id("아연")}"); param("sort", ""); param("category", "") }.andExpect {
+            status { isOk() }
+            jsonPath("$.data.items[*].id") { value(contains(high.toInt(), low.toInt())) }
+        }
+        mvc.get("/api/products/explore") { param("category", "") }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.error.details[0].field") { value("ingredient") }
+        }
+    }
+
+    @Test
+    fun `카테고리 목록 API는 판정 순서대로 공개 제품 수와 함께 내려준다`() {
+        product("A").also { categorize(it, "EYE") }
+        product("B").also { categorize(it, "EYE", "LIVER") }
+        product("C", rawMaterial = true).also { categorize(it, "EYE") }
+        product("D", status = "DELETED").also { categorize(it, "EYE") }
+
+        mvc.get("/api/categories").andExpect {
+            status { isOk() }
+            header { string("Cache-Control", "max-age=60, public") }
+            jsonPath("$.data[0].code") { value("EYE") }
+            jsonPath("$.data[0].label") { value("눈") }
+            jsonPath("$.data[0].productCount") { value(2) }
+            jsonPath("$.data[1].code") { value("LIVER") }
+            jsonPath("$.data[1].productCount") { value(1) }
+            // 제품이 없는 카테고리도 빠지지 않는다(화면의 카테고리 칩이 데이터에 따라 바뀌지 않게).
+            jsonPath("$.data[?(@.code == 'HAIR')].productCount") { value(contains(0)) }
+        }
+    }
+
+    private fun categorize(productId: Long, vararg categories: String) {
+        categories.forEach { jdbc.update("INSERT INTO product_category (product_id, category) VALUES (?, ?)", productId, it) }
+    }
+
     private fun id(name: String): Long = jdbc.queryForObject("SELECT id FROM ingredient WHERE name = ?", Long::class.java, name)!!
 
     private fun linkBrand(productId: Long, brandName: String) {
@@ -356,13 +445,14 @@ class ProductExploreApiTest(
         reportedOn: LocalDate? = null,
         rawMaterial: Boolean = false,
         status: String = "ACTIVE",
+        functionalMaterials: String? = null,
     ): Long = jdbc.queryForObject(
         """
-        INSERT INTO product (report_no, name, raw_material, status, parse_status, parser_version, reported_on, form, export_only)
-        VALUES (?, ?, ?, ?, 'PARSED', '1', ?, ?, ?) RETURNING id
+        INSERT INTO product (report_no, name, raw_material, status, parse_status, parser_version, reported_on, form, export_only, functional_materials)
+        VALUES (?, ?, ?, ?, 'PARSED', '1', ?, ?, ?, ?) RETURNING id
         """,
         Long::class.java,
-        "R${seq++}", name, rawMaterial, status, reportedOn, form, ExportName.isExportOnly(name),
+        "R${seq++}", name, rawMaterial, status, reportedOn, form, ExportName.isExportOnly(name), functionalMaterials,
     )!!
 
     private fun has(productId: Long, ingredientName: String, dailyAmount: String?, unit: String = "mg") {

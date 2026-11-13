@@ -72,6 +72,17 @@ class ProductDetailApiTest(
     }
 
     @Test
+    fun `기능성 카테고리를 판정 순서(enum 순서)대로 붙인다`() {
+        val id = product("눈피로 루테인")
+        jdbc.update("INSERT INTO product_category (product_id, category) VALUES (?, 'FATIGUE'), (?, 'EYE')", id, id)
+
+        mvc.get("/api/products/$id").andExpect {
+            jsonPath("$.data.categories[*].code") { value(contains("EYE", "FATIGUE")) }
+            jsonPath("$.data.categories[0].label") { value("눈") }
+        }
+    }
+
+    @Test
     fun `수출용 여부를 붙인다`() {
         val id = product("석류미인(태국)")
 

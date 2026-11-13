@@ -1,6 +1,7 @@
 package com.alkkuni.api.product
 
 import com.alkkuni.api.brand.BrandRef
+import com.alkkuni.api.category.CategoryRef
 import com.alkkuni.core.ingredient.entity.Ingredient
 import com.alkkuni.core.product.entity.Product
 import com.alkkuni.core.product.entity.ProductIngredient
@@ -24,6 +25,8 @@ data class CompareProduct(
     // 수출용 제품(제품명 표기로 판정). 화면은 "수출용" 배지를 단다. 기본 정렬에서 국내 제품 뒤에 온다.
     val exportOnly: Boolean,
     val form: String?,
+    // 기능성 카테고리(FunctionalCategory 순서). 없으면 빈 목록
+    val categories: List<CategoryRef>,
     // DAILY·PER_SERVING만 "1일 기준", 나머지는 "표시 기준량"으로 보여준다(검색 API와 같은 규칙).
     val basisCheck: BasisCheck?,
     // NEEDS_REVIEW면 함량이 이상해 검수 대기 중이다. 경고로 구분한다.
@@ -63,13 +66,14 @@ data class CompareAmount(
     val basisUnit: String,
 )
 
-fun Product.toCompareProduct(brand: BrandRef?) = CompareProduct(
+fun Product.toCompareProduct(brand: BrandRef?, categories: List<CategoryRef>) = CompareProduct(
     id = requireNotNull(id),
     name = name,
     manufacturer = manufacturer,
     brand = brand,
     exportOnly = exportOnly,
     form = form,
+    categories = categories,
     basisCheck = basisCheck,
     parseStatus = parseStatus,
 )
