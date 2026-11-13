@@ -152,11 +152,13 @@
 ## 작업 로그
 
 ### 2026-11-13
-- 기능성으로 찾기(`feat/category-filter`). 원래 의도는 "성분을 몰라도 눈 건강 제품을 쇼핑"이라, `category=`를 성분 목록 안의 필터로만 두지 않고 `/explore`의 `ingredient`를 선택으로 바꿨다(성분·카테고리 중 하나 필수). 카테고리만 고르면 최신순이고 함량 조건은 400, 항목에 `functionalMaterials`·`categories`를 붙인다. 카테고리 목록 API(`GET /api/categories`), 비교·상세 응답 `categories`. 결정은 PLANNING.md "기능성으로 찾기".
+- 기능성으로 찾기(`feat/category-filter`, PR #35). 원래 의도는 "성분을 몰라도 눈 건강 제품을 쇼핑"이라, `category=`를 성분 목록 안의 필터로만 두지 않고 `/explore`의 `ingredient`를 선택으로 바꿨다(성분·카테고리 중 하나 필수). 카테고리만 고르면 최신순이고 함량 조건은 400, 항목에 `functionalMaterials`·`categories`를 붙인다. 카테고리 목록 API(`GET /api/categories`), 비교·상세 응답 `categories`. 결정은 PLANNING.md "기능성으로 찾기".
   - 카테고리는 하나만, 검색 API에는 붙이지 않음(2026-11-13 사용자 확인). 인기순은 아직 없어(계획만 있음) 인기 순위 작업 때 제품별 조회 카운트로 붙인다.
   - `product_category` 조회용 엔티티(`ProductCategory`, 복합 키)를 core에 뒀다. 쓰기는 지금처럼 batch `CategoryLinker`(JDBC)만 한다.
   - 로컬 측정(각 4회, 첫 회 제외): 카테고리 목록 27~30ms, `category=EYE`(3,832건) 23~26ms, 가장 큰 `CIRCULATION`(8,633건) 40~43ms, `category=EYE&ingredient=아연` 25~53ms. 필터는 PK `(product_id, category)` 상관 `EXISTS`다.
   - 프론트 연동 때 전달: `baseIngredientId`가 nullable이 됐고, `sort` 기본값이 성분 유무에 따라 다르다.
+  - `/code-review` 반영: `sort`의 `defaultValue`를 없애며 `sort=`(빈 값)가 400이 되던 회귀를 고침(빈 값은 기본값), `category=`도 고르지 않은 것으로 봄. 성분이 없으면 함량 조회 쿼리를 보내지 않음, 상세의 단건 카테고리 조회 정리, 카테고리 목록의 `code`를 `toRef()` 한 곳에서 만듦, enum 값 변경 시 배포 순서(`link-categories` 먼저)를 `ProductCategory` KDoc에.
+  - 의도됨으로 둔 것: `(category, product_id)` 인덱스는 넣지 않았다. 가장 큰 `CIRCULATION` 첫 페이지 `EXPLAIN ANALYZE` 45.6ms 중 `product_category` 스캔은 4.3ms(9,111행)이고 대부분은 `product` 전체 스캔(36.9ms, 최신순 정렬)이다. 인덱스로 줄일 수 있는 건 약 4ms라 마이그레이션을 늘리지 않는다. 느려지면 볼 곳은 최신순 정렬 쪽이다. 카테고리 목록 서버 캐시는 27~30ms이고 CloudFront 60초 캐시가 있어 보류, 모든 목록에 `functionalMaterials`를 싣는 건 성분 목록에서도 원료를 보여줄 수 있어 그대로.
 - 기능성 카테고리 판정과 저장(`feat/functional-category`, PR #34). 화면의 "눈·간·혈당" 필터용이다. I0030 기능성 원문은 자유 문장이 아니라 고시 문구를 이어 붙인 것이어서(`[원료]`·①②·가운뎃점), 문구 단위로 쪼개면 표기가 거의 통일된다. 원료 기능 문구는 2,009종이고 상위 50개가 출현의 85%다. 조사 스크립트와 검토 표는 `data/category-tools/`(로컬 전용).
   - 카테고리 24개. 작은 카테고리(위 193·키 성장 95·모발 80개)도 그대로 둔다. 로컬 원료 제외 43,449개 중 31,142개에 하나 이상(혈행 8,633·장 7,556·항산화 7,331 … 뼈 504).
   - 영양소 기능 문구("…에 필요", 칼슘·비타민 D의 "골다공증 발생 위험 감소")는 쓰지 않는다. 쓰면 종합비타민이 눈(비타민 A)·면역(아연)·항산화(비타민 E)에 모두 들어가 카테고리가 종합비타민으로 채워진다. 골다공증 문구가 있는 10,704개 중 7,854개는 칼슘 없이 비타민 D만 있는 제품이라 뼈에서도 뺐다. 비타민·무기질은 성분으로 고른다. 그래서 영양소 문구만 있는 12,258개는 카테고리가 없다.

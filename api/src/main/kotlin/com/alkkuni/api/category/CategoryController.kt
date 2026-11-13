@@ -22,15 +22,17 @@ class CategoryController(private val productCategoryRepository: ProductCategoryR
         val counts = productCategoryRepository.countProducts().associate { it.category to it.count }
         return ResponseEntity.ok()
             .cacheControl(PUBLIC_CACHE)
-            .body(ApiResponse.ok(FunctionalCategory.entries.map { CategoryItem(it.name, it.label, counts[it] ?: 0) }))
+            .body(ApiResponse.ok(FunctionalCategory.entries.map { CategoryItem(it.toRef(), counts[it] ?: 0) }))
     }
 }
 
+// code(필터 값 category=EYE)와 label은 제품 응답의 categories와 같은 toRef()로 만든다. 표기가 갈라지지 않게 한 곳에 둔다.
 data class CategoryItem(
-    // 필터 값(category=EYE). enum 이름 그대로다.
     val code: String,
     val label: String,
     // 공개 제품 수(삭제·원료 제외, 수출용 포함)
     val productCount: Long,
-)
+) {
+    constructor(ref: CategoryRef, productCount: Long) : this(ref.code, ref.label, productCount)
+}
 

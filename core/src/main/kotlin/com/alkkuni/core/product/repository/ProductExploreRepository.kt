@@ -129,7 +129,8 @@ class ProductExploreRepository(
 
     // 한 페이지 제품의 고른 성분 행. (제품 id, 성분 id) → 원문 성분표 순서의 행 목록. 행이 없으면 키가 없다.
     fun amounts(productIds: Collection<Long>, ingredientIds: Collection<Long>): Map<Pair<Long, Long>, List<ProductIngredient>> {
-        if (productIds.isEmpty()) return emptyMap()
+        // 카테고리만 고른 목록은 성분이 없다. 결과가 늘 비는 쿼리를 보내지 않는다.
+        if (productIds.isEmpty() || ingredientIds.isEmpty()) return emptyMap()
         return productIngredientRepository.findAllByProductIdInAndIngredientIdInOrderById(productIds, ingredientIds)
             .groupBy { it.productId to requireNotNull(it.ingredientId) }
     }

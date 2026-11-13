@@ -34,7 +34,7 @@ class ProductDetailService(
 
         return product.toDetailResponse(
             brand = product.brandId?.let { brandRepository.findByIdOrNull(it) }?.toRef(),
-            categories = productCategoryRepository.refsOf(listOf(id))[id].orEmpty(),
+            categories = productCategoryRepository.refsOf(id),
             ingredients = rows.map { it.toDetailIngredient(it.ingredientId?.let(ingredients::get)) },
             recalls = recalls.map { it.toDetailRecall() },
         )

@@ -394,6 +394,22 @@ class ProductExploreApiTest(
     }
 
     @Test
+    fun `빈 sort와 빈 category는 고르지 않은 것으로 본다`() {
+        val high = product("A").also { has(it, "아연", "10") }
+        val low = product("B", reportedOn = LocalDate.of(2026, 1, 1)).also { has(it, "아연", "5") }
+
+        // sort= 는 예전처럼 기본값(성분이 있으면 함량순)이다.
+        mvc.get("/api/products/explore") { param("ingredient", "${id("아연")}"); param("sort", ""); param("category", "") }.andExpect {
+            status { isOk() }
+            jsonPath("$.data.items[*].id") { value(contains(high.toInt(), low.toInt())) }
+        }
+        mvc.get("/api/products/explore") { param("category", "") }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.error.details[0].field") { value("ingredient") }
+        }
+    }
+
+    @Test
     fun `카테고리 목록 API는 판정 순서대로 공개 제품 수와 함께 내려준다`() {
         product("A").also { categorize(it, "EYE") }
         product("B").also { categorize(it, "EYE", "LIVER") }

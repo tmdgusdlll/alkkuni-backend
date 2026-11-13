@@ -51,7 +51,9 @@ class ProductExploreService(
         size: Int,
     ): ProductExploreResponse {
         val ingredientIds = validIds(rawIngredientIds, "ingredient", 0)
-        val category = rawCategory?.let { c -> FunctionalCategory.entries.find { it.name == c } ?: invalid("category", "없는 카테고리입니다: $c") }
+        // 빈 값(category=·sort=)은 고르지 않은 것으로 본다. 프론트가 칩을 해제하면 빈 값을 보낼 수 있고,
+        // sort는 예전 defaultValue가 빈 값을 기본값으로 바꿔 주던 동작을 지킨다.
+        val category = rawCategory?.trim()?.ifEmpty { null }?.let { c -> FunctionalCategory.entries.find { it.name == c } ?: invalid("category", "없는 카테고리입니다: $c") }
         if (ingredientIds.isEmpty()) {
             if (category == null) invalid("ingredient", "성분이나 카테고리를 골라 주세요.")
             if (min != null || max != null) invalid(if (min != null) "min" else "max", "함량 범위는 성분을 골라야 쓸 수 있습니다.")
@@ -72,7 +74,7 @@ class ProductExploreService(
         (ingredientIds + excludeIds).firstOrNull { it !in found }?.let { invalid(if (it in ingredientIds) "ingredient" else "exclude", "없는 성분입니다: $it") }
         val ingredients = ingredientIds.map { found.getValue(it) }
 
-        val (searchSort, baseId) = parseSort(sort ?: if (ingredientIds.isEmpty()) "latest" else "amount", ingredientIds)
+        val (searchSort, baseId) = parseSort(sort?.trim()?.ifEmpty { null } ?: if (ingredientIds.isEmpty()) "latest" else "amount", ingredientIds)
         val base = ingredients.find { it.id == baseId }?.let { ExploreBase(requireNotNull(it.id), it.defaultUnit, it.suspectAbove(), it.comparableUnits()) }
         val references = if (meetsReference) {
             ingredients.map { ing ->

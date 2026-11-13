@@ -11,6 +11,10 @@ data class CategoryRef(
 
 fun FunctionalCategory.toRef() = CategoryRef(code = name, label = label)
 
+// 제품 하나의 카테고리(FunctionalCategory 순서). 없으면 빈 목록
+fun ProductCategoryRepository.refsOf(productId: Long): List<CategoryRef> =
+    findAllByProductIdIn(listOf(productId)).map { it.category }.sorted().map { it.toRef() }
+
 // 제품 여러 개의 카테고리. 한 번에 조회하고 FunctionalCategory 순서로 둔다. 카테고리가 없는 제품은 키가 없다.
 fun ProductCategoryRepository.refsOf(productIds: Collection<Long>): Map<Long, List<CategoryRef>> =
     if (productIds.isEmpty()) {
