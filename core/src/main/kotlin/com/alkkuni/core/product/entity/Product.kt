@@ -132,8 +132,8 @@ class Product(
     var exportOnly: Boolean = ExportName.isExportOnly(name)
         protected set
 
-    // 판정 규칙을 바꾼 뒤 기존 제품을 다시 판정할 때(mark-export) 쓴다.
-    fun judgeExport() {
+    // 이름이 바뀔 때(updateSource) 다시 판정한다. 기존 제품 일괄 재판정(mark-export)은 ExportName을 직접 쓴다.
+    private fun judgeExport() {
         exportOnly = ExportName.isExportOnly(name)
     }
 

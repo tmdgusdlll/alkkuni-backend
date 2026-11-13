@@ -8,13 +8,6 @@ import java.math.BigDecimal
 import java.sql.ResultSet
 import java.time.LocalDate
 
-// 국내·수출 범위. ALL은 모두 보여주되 수출용(Product.exportOnly)을 뒤로 보낸다. 검색과 성분별 목록이 함께 쓴다.
-enum class ProductMarket {
-    ALL,
-    DOMESTIC,
-    EXPORT,
-}
-
 enum class ProductSearchSort {
     // 제품명·제조사 일치 먼저, 그다음 제품명 유사도
     RELEVANCE,
@@ -122,15 +115,15 @@ class ProductSearchRepository(private val jdbc: JdbcClient) {
             .list()
     }
 
-    // 검색어가 브랜드면 그 브랜드 제품을 맨 앞에 두고, 그 안에서는 제품명 유사도를 보지 않는다(같은 값 → 최신순).
-    // 제품명에 브랜드 이름이 없는 제품("ATOMY …")은 유사도가 0에 가까워, 유사도로 정렬하면 브랜드 제품 중 맨 뒤로 밀린다
-    // (로컬 "애터미" 347개 중 107개가 241위 이후).
     private fun marketFilter(cond: ProductSearchCondition) = when (cond.market) {
         ProductMarket.ALL -> ""
         ProductMarket.DOMESTIC -> " AND NOT p.export_only"
         ProductMarket.EXPORT -> " AND p.export_only"
     }
 
+    // 검색어가 브랜드면 그 브랜드 제품을 맨 앞에 두고, 그 안에서는 제품명 유사도를 보지 않는다(같은 값 → 최신순).
+    // 제품명에 브랜드 이름이 없는 제품("ATOMY …")은 유사도가 0에 가까워, 유사도로 정렬하면 브랜드 제품 중 맨 뒤로 밀린다
+    // (로컬 "애터미" 347개 중 107개가 241위 이후).
     private fun brandFirst(cond: ProductSearchCondition) = if (cond.brandId != null) "(p.brand_id = :brandId) DESC NULLS LAST, " else ""
 
     private fun similarity(cond: ProductSearchCondition) =
