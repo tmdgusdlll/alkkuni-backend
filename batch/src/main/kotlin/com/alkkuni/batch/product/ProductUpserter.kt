@@ -23,6 +23,7 @@ class ProductUpserter(
     private val productIngredientRepository: ProductIngredientRepository,
     private val dictionary: IngredientDictionary,
     private val brands: BrandDictionary,
+    private val categories: CategoryLinker,
 ) {
     /** 한 페이지를 한 트랜잭션으로 저장한다. 바뀌어서 다시 쓴 제품 수를 돌려준다. */
     @Transactional
@@ -37,6 +38,9 @@ class ProductUpserter(
             // 원본도 같고 판정 규칙 버전도 같을 때만 건너뛴다.
             // 규칙을 바꿔 VERSION을 올리면 다시 적재하는 것만으로 재판정된다(검수한 제품은 applyParse가 지킨다).
             if (found?.sourceHash == row.sourceHash && found.parserVersion == IngredientAmountParser.VERSION) continue
+
+            // 카테고리는 기능성 원문에서만 정해진다. 원문이 같으면 다시 쓰지 않는다(규칙 변경은 link-categories가 맡는다).
+            val functionalityChanged = found == null || found.functionality != row.functionality
 
             // 새 제품은 기준규격 없이 만들고, 기준규격과 판정(원료 여부 포함)은 applyParse가 채운다.
             val product = (found ?: Product(
@@ -59,6 +63,7 @@ class ProductUpserter(
             val result = IngredientAmountParser.parse(row.standardText ?: "")
             val reparsed = product.applyParse(row.standardText, result)
             val productId = productRepository.save(product).id!!
+            if (functionalityChanged) categories.relink(productId, product.functionality)
 
             if (reparsed) {
                 if (found != null) productIngredientRepository.deleteAllByProductId(productId)
