@@ -1,5 +1,6 @@
 package com.alkkuni.api.product
 
+import com.alkkuni.core.product.ExportName
 import org.hamcrest.Matchers.contains
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -67,6 +68,15 @@ class ProductDetailApiTest(
 
         mvc.get("/api/products/$id").andExpect {
             jsonPath("$.data.brand.name") { value("애터미") }
+        }
+    }
+
+    @Test
+    fun `수출용 여부를 붙인다`() {
+        val id = product("석류미인(태국)")
+
+        mvc.get("/api/products/$id").andExpect {
+            jsonPath("$.data.exportOnly") { value(true) }
         }
     }
 
@@ -165,11 +175,11 @@ class ProductDetailApiTest(
         precautions: String? = null,
     ): Long = jdbc.queryForObject(
         """
-        INSERT INTO product (report_no, name, raw_material, status, parse_status, parser_version, precautions)
-        VALUES (?, ?, false, ?, 'PARSED', '1', ?) RETURNING id
+        INSERT INTO product (report_no, name, raw_material, status, parse_status, parser_version, precautions, export_only)
+        VALUES (?, ?, false, ?, 'PARSED', '1', ?, ?) RETURNING id
         """,
         Long::class.java,
-        reportNo, name, status, precautions,
+        reportNo, name, status, precautions, ExportName.isExportOnly(name),
     )!!
 
     private fun ingredient(productId: Long, ingredientName: String?, dailyAmount: String, rawName: String = ingredientName!!) {

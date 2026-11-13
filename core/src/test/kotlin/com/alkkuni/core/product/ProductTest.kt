@@ -195,6 +195,16 @@ class ProductTest {
         assertDaily(null, null, "비타민C : 표시량(100mg/0mg)", "1일 1회, 1회 2정")
     }
 
+    @Test
+    fun `제품명이 정해질 때 수출용을 판정한다`() {
+        val product = Product(reportNo = "1", name = "석류미인(태국)", rawMaterial = false, parseStatus = ParseStatus.NO_AMOUNT, parserVersion = "0")
+        assertTrue(product.exportOnly)
+
+        // 원본이 바뀌어 이름에서 수출 표기가 빠지면 국내 제품이 된다
+        product.updateSource("석류미인", null, null, "h", null, null, null, null, null, null)
+        assertFalse(product.exportOnly)
+    }
+
     private fun assertDaily(expected: String?, expectedUnit: String?, text: String, intake: String) {
         val product = apply(text, intake)
         val daily = product.dailyAmount(IngredientAmountParser.parse(text).amounts.single())

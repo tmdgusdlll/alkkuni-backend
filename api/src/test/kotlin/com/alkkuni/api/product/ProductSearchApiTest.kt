@@ -1,6 +1,8 @@
 package com.alkkuni.api.product
 
+import com.alkkuni.core.product.ExportName
 import org.hamcrest.Matchers.contains
+import org.hamcrest.Matchers.containsInAnyOrder
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -243,6 +245,56 @@ class ProductSearchApiTest(
     }
 
     @Test
+    fun `수출용 제품은 어느 정렬이든 국내 제품 뒤에 온다`() {
+        // 최신이고 이름도 더 비슷한 수출용 제품들. 표기는 "수출용"·"전량수출용"·괄호 안 국가명.
+        val exportWord = product("애터미 석류미인(전량수출용)", reportedOn = LocalDate.of(2026, 7, 1)).also { linkBrand(it, "애터미") }
+        val exportCountry = product("애터미 석류미인 (영국, 독일)", reportedOn = LocalDate.of(2026, 7, 2)).also { linkBrand(it, "애터미") }
+        val domestic = product("애터미 헤모힘", reportedOn = LocalDate.of(2018, 1, 1)).also { linkBrand(it, "애터미") }
+
+        for (sort in listOf("relevance", "latest")) {
+            mvc.get("/api/products") { param("q", "애터미"); param("sort", sort) }.andExpect {
+                jsonPath("$.data.items[0].id") { value(domestic.toInt()) }
+                jsonPath("$.data.items[*].id") { value(containsInAnyOrder(domestic.toInt(), exportWord.toInt(), exportCountry.toInt())) }
+            }
+        }
+    }
+
+    @Test
+    fun `수출겸용·수출명·원산지 표기는 수출용으로 보지 않는다`() {
+        val dualUse = product("다이어트 유산균 (수출겸용)", reportedOn = LocalDate.of(2020, 1, 1))
+        val exportName = product("혼합 유산균(수출명:Rofit)", reportedOn = LocalDate.of(2020, 1, 2))
+        val origin = product("유산균 크릴오일(호주산)", reportedOn = LocalDate.of(2020, 1, 3))
+        val export = product("유산균 골드(수출용)", reportedOn = LocalDate.of(2026, 1, 1))
+
+        mvc.get("/api/products") { param("q", "유산균"); param("sort", "latest") }.andExpect {
+            jsonPath("$.data.items[*].id") { value(contains(origin.toInt(), exportName.toInt(), dualUse.toInt(), export.toInt())) }
+        }
+    }
+
+    @Test
+    fun `market으로 국내용만·수출용만 고르고 응답에 수출용 여부를 붙인다`() {
+        val export = product("유산균 골드(수출용)", reportedOn = LocalDate.of(2026, 1, 1))
+        val domestic = product("유산균 베이직", reportedOn = LocalDate.of(2020, 1, 1))
+
+        mvc.get("/api/products") { param("q", "유산균") }.andExpect {
+            jsonPath("$.data.totalCount") { value(2) }
+            jsonPath("$.data.items[*].exportOnly") { value(contains(false, true)) }
+        }
+        mvc.get("/api/products") { param("q", "유산균"); param("market", "domestic") }.andExpect {
+            jsonPath("$.data.totalCount") { value(1) }
+            jsonPath("$.data.items[*].id") { value(contains(domestic.toInt())) }
+        }
+        mvc.get("/api/products") { param("q", "유산균"); param("market", "export") }.andExpect {
+            jsonPath("$.data.totalCount") { value(1) }
+            jsonPath("$.data.items[*].id") { value(contains(export.toInt())) }
+        }
+        mvc.get("/api/products") { param("q", "유산균"); param("market", "korea") }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.error.details[0].field") { value("market") }
+        }
+    }
+
+    @Test
     fun `성공 응답만 60초 공개 캐시 헤더가 붙는다`() {
         mvc.get("/api/products") { param("q", "아연") }.andExpect {
             header { string("Cache-Control", "max-age=60, public") }
@@ -267,11 +319,11 @@ class ProductSearchApiTest(
         basisCheck: String? = null,
     ): Long = jdbc.queryForObject(
         """
-        INSERT INTO product (report_no, name, manufacturer, raw_material, status, parse_status, parser_version, reported_on, basis_check)
-        VALUES (?, ?, ?, ?, ?, ?, '1', ?, ?) RETURNING id
+        INSERT INTO product (report_no, name, manufacturer, raw_material, status, parse_status, parser_version, reported_on, basis_check, export_only)
+        VALUES (?, ?, ?, ?, ?, ?, '1', ?, ?, ?) RETURNING id
         """,
         Long::class.java,
-        "R${seq++}", name, manufacturer, rawMaterial, status, parseStatus, reportedOn, basisCheck,
+        "R${seq++}", name, manufacturer, rawMaterial, status, parseStatus, reportedOn, basisCheck, ExportName.isExportOnly(name),
     )!!
 
     private fun ingredient(productId: Long, ingredientName: String, dailyAmount: String?, unit: String = "mg") {

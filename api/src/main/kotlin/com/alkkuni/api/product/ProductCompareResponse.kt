@@ -21,6 +21,8 @@ data class CompareProduct(
     val manufacturer: String?,
     // 제품명에서 찾은 브랜드. 없으면 null(대부분)
     val brand: BrandRef?,
+    // 수출용 제품(제품명 표기로 판정). 화면은 "수출용" 배지를 단다. 기본 정렬에서 국내 제품 뒤에 온다.
+    val exportOnly: Boolean,
     val form: String?,
     // DAILY·PER_SERVING만 "1일 기준", 나머지는 "표시 기준량"으로 보여준다(검색 API와 같은 규칙).
     val basisCheck: BasisCheck?,
@@ -66,6 +68,7 @@ fun Product.toCompareProduct(brand: BrandRef?) = CompareProduct(
     name = name,
     manufacturer = manufacturer,
     brand = brand,
+    exportOnly = exportOnly,
     form = form,
     basisCheck = basisCheck,
     parseStatus = parseStatus,

@@ -37,6 +37,7 @@ class ProductExploreService(
         min: BigDecimal?,
         max: BigDecimal?,
         meetsReference: Boolean,
+        market: String,
         sort: String,
         page: Int,
         size: Int,
@@ -68,7 +69,7 @@ class ProductExploreService(
         } else {
             emptyList()
         }
-        val cond = ProductExploreCondition(ingredientIds, excludeIds, cleanForms, base, min, max, references, brandIds)
+        val cond = ProductExploreCondition(ingredientIds, excludeIds, cleanForms, base, min, max, references, brandIds, parseMarket(market))
 
         val result = exploreRepository.find(cond, searchSort, page, size)
         val amounts = exploreRepository.amounts(result.content.map { it.id }, ingredientIds)

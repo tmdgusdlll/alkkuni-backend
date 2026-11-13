@@ -7,6 +7,7 @@ import com.alkkuni.core.parser.IntakeMethod
 import com.alkkuni.core.parser.IntakeMethodParser
 import com.alkkuni.core.parser.ParseResult
 import com.alkkuni.core.parser.ParsedAmount
+import com.alkkuni.core.product.ExportName
 import com.alkkuni.core.product.enums.BasisCheck
 import com.alkkuni.core.product.enums.ParseStatus
 import com.alkkuni.core.product.enums.ProductStatus
@@ -126,6 +127,16 @@ class Product(
     var brandId: Long? = null
         protected set
 
+    // 수출용 제품(ExportName, 제품명 표기로 판정). 이름이 정해질 때 함께 계산한다.
+    @Column(nullable = false)
+    var exportOnly: Boolean = ExportName.isExportOnly(name)
+        protected set
+
+    // 이름이 바뀔 때(updateSource) 다시 판정한다. 기존 제품 일괄 재판정(mark-export)은 ExportName을 직접 쓴다.
+    private fun judgeExport() {
+        exportOnly = ExportName.isExportOnly(name)
+    }
+
     fun linkBrand(brandId: Long?) {
         this.brandId = brandId
     }
@@ -145,6 +156,7 @@ class Product(
         precautions: String?,
     ) {
         this.name = name
+        judgeExport()
         this.manufacturer = manufacturer
         this.intakeMethod = intakeMethod
         this.sourceHash = sourceHash

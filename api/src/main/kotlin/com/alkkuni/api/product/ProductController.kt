@@ -30,12 +30,14 @@ class ProductController(
     fun search(
         @RequestParam @NotBlank(message = "검색어를 입력해 주세요.") @Size(max = 100, message = "100자 이하로 입력해 주세요.") q: String,
         @RequestParam(defaultValue = "relevance") sort: String,
+        // all(기본, 수출용은 뒤로), domestic(국내용만), export(수출용만)
+        @RequestParam(defaultValue = "all") market: String,
         @RequestParam(defaultValue = "0") @Min(0) @Max(MAX_PAGE) page: Int,
         @RequestParam(defaultValue = "20") @Min(1) @Max(50) size: Int,
     ): ResponseEntity<ApiResponse<ProductSearchResponse>> =
         ResponseEntity.ok()
             .cacheControl(PUBLIC_CACHE)
-            .body(ApiResponse.ok(searchService.search(q, sort, page, size)))
+            .body(ApiResponse.ok(searchService.search(q, sort, market, page, size)))
 
     // ids=1,2,3. 개수·중복 검사는 서비스에서 한다.
     @GetMapping("/compare")
@@ -56,13 +58,14 @@ class ProductController(
         @RequestParam(required = false) @PositiveOrZero @DecimalMax(MAX_AMOUNT) min: BigDecimal?,
         @RequestParam(required = false) @PositiveOrZero @DecimalMax(MAX_AMOUNT) max: BigDecimal?,
         @RequestParam(defaultValue = "false") meetsReference: Boolean,
+        @RequestParam(defaultValue = "all") market: String,
         @RequestParam(defaultValue = "amount") sort: String,
         @RequestParam(defaultValue = "0") @Min(0) @Max(MAX_PAGE) page: Int,
         @RequestParam(defaultValue = "20") @Min(1) @Max(50) size: Int,
     ): ResponseEntity<ApiResponse<ProductExploreResponse>> =
         ResponseEntity.ok()
             .cacheControl(PUBLIC_CACHE)
-            .body(ApiResponse.ok(exploreService.explore(ingredient, exclude.orEmpty(), form.orEmpty(), brand.orEmpty(), min, max, meetsReference, sort, page, size)))
+            .body(ApiResponse.ok(exploreService.explore(ingredient, exclude.orEmpty(), form.orEmpty(), brand.orEmpty(), min, max, meetsReference, market, sort, page, size)))
 
     // 숫자가 아닌 id는 타입 변환 실패로 400이 된다. /compare·/explore는 리터럴 경로라 이 매핑보다 먼저 잡힌다.
     @GetMapping("/{id}")
