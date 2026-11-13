@@ -1,0 +1,4 @@
+# 빌드 컨텍스트에는 미리 만든 jar만 보낸다(소스·.env·data가 이미지 레이어에 들어가지 않게).
+*
+!api/build/libs/api.jar
+!batch/build/libs/batch.jar

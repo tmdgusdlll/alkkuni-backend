@@ -85,7 +85,9 @@
    - 네이버는 동작하는 서비스 URL로 검수를 받아야 해서 3단계(인증) 뒤에야 신청할 수 있다. 공개가 늦어질 수 있는 유일한 외부 대기
    - 인증 PR에서: CloudFront → Nginx → API를 거치면 Spring이 리다이렉트 URI를 http나 EC2 주소로 만들 수 있다. `forward-headers-strategy` 또는 운영 `redirect-uri` 고정
 5. 기본 배포(1단계 병렬 레인): ECR 푸시 → EC2. 처음엔 3주차 CloudFront 때로 미뤘지만, 웹훅·SES 도메인·메모리 실측이 모두 배포를 기다려 앞당김
-   - 정할 것: Dockerfile 방식(Boot `bootBuildImage` vs 직접 작성), OIDC IAM 역할 범위
+   - [x] Dockerfile·운영 compose·Nginx(`chore/dockerfile`, 2026-11-13). 정한 것: CI가 `bootJar`로 만든 jar를 복사하는 Dockerfile 하나(`ARG MODULE`, jar 이름 `api.jar`·`batch.jar` 고정), 프로필·메모리·헬스 체크는 `compose.prod.yaml`
+   - 다음: AWS 준비(직접: ECR 2개, OIDC IAM 역할, EC2·swap·Docker·SSM, Parameter Store) → `deploy.yml` → S3 `RawStore`(별도 PR) → 운영 첫 실행(초기 적재 → `link-ingredients` → `link-brands` → `mark-export` → `link-categories`)과 메모리 실측
+   - 정할 것: OIDC IAM 역할 범위(제안: 이 레포 `main`만, ECR 푸시 + 해당 인스턴스 SSM `SendCommand`만)
    - 정함(2026-11-07): t4g.small로 시작, 탄력적 IP 연결, swap 1~2GB. 메모리 실측 뒤 부족하면 medium(PLANNING.md "배포")
    - 검증: EC2에서 `/actuator/health` UP
    - 확인: 운영 compose(또는 Dockerfile)에 `SPRING_PROFILES_ACTIVE=prod` 지정. 공통 yaml의 기본 프로필이 `local`이라 빠지면 `localhost` DB로 접속을 시도한다
@@ -97,7 +99,7 @@
    - 배포 후 `/actuator/health` UP 확인 단계로 끝낸다
    - 검증 추가: batch 실행 중 `docker stats` 피크와 swap 사용량 기록 → 미해결 질문 "2GB로 컨테이너 4개" 답
    - 기동 순서: api(Flyway) → 헬스 UP → batch. batch는 Flyway 없이 `ddl-auto=validate`만 하므로 새 마이그레이션이 적용되기 전에 뜨면 기동에 실패한다
-   - jar artifact 전달은 Dockerfile 방식이 정해진 뒤 판단. 멀티 모듈이라 경로는 `api/build/libs`, `-plain.jar` 제외
+   - jar 전달: `deploy.yml`이 `./gradlew :api:bootJar :batch:bootJar` 뒤 `docker build --build-arg MODULE=…`. `.dockerignore`가 두 jar만 컨텍스트에 보낸다
 6. 1일 기준값 나머지(2026-11-09 계획)
    - 상한을 넣지 않은 기능성 원료: 프로바이오틱스 수·폴리감마글루탐산(개별인정형이 고시 최고량을 정상으로 넘음), 실리마린·포스파티딜세린·크레아틴(고시가 고정량), 식이섬유(원료마다 최고량이 다름). 개별인정형 원료 최고량을 따로 수집하게 되면 다시 본다
    - 기준값 보류 성분: 조단백질(대두단백 외 원료도 같은 이름), 총 플라보노이드(프로폴리스, 충족 41%·중앙값 17mg이라 용도별 하한 확인 필요), 로사빈·소포리코사이드(고시 값이 추출물 양). `docs/daily-reference.csv`의 `note`에 이유
@@ -152,6 +154,12 @@
 ## 작업 로그
 
 ### 2026-11-13
+- Dockerfile·운영 compose·Nginx(`chore/dockerfile`, PR #36). 기본 배포의 첫 단위다.
+  - `Dockerfile`: `eclipse-temurin:21-jre-alpine`(툴체인 21, arm64 지원), 비루트 `app`, `-XX:MaxRAMPercentage=60.0`(리뷰 반영, 아래). 프로필은 이미지에 넣지 않고 compose에서 준다(같은 이미지를 로컬에서도 띄움). 헬스 체크는 api에만 필요해 compose에 뒀다(batch는 웹 서버 없이 끝나는 컨테이너).
+  - `compose.prod.yaml`: nginx·api·db 상주, batch는 `profiles: [job]`이라 `run --rm --no-deps batch --alkkuni.job=…`으로만 돈다. api가 healthy(Flyway 끝)인 뒤에 돌리는 순서는 `deploy.yml`·cron이 지킨다. `mem_limit` nginx 64m·api 640m·batch 640m·db 512m는 첫 추정값이고 실측으로 고친다. 원본은 S3 `RawStore` 전까지 `raw-data` 볼륨.
+  - 로컬 확인(arm64, 별도 compose 프로젝트): prod 프로필로 기동, Flyway V1~V15 적용, Nginx를 거친 `/actuator/health` UP·`/api/categories` 200·`/` 502(web 없음), batch `link-categories` 정상 종료, 볼륨 쓰기 권한(app 사용자) 확인. JVM 힙 상한 384MB(640MB의 60%). 유휴 메모리 api 317MB·db 47MB·nginx 11MB. 이미지 api 406MB·batch 386MB.
+  - `/code-review` 반영: 힙 75% → 60%(640m에서 힙 밖 여유가 160MB뿐이라 커널 OOM 위험), 로그 회전(`max-size 10m`·3개), 운영 DB `postgres:17-alpine` → `postgres:17`(테스트와 같은 glibc 정렬), 필수 변수 `${…:?}`(빈 값이면 compose 단계에서 실패, 로컬로 확인), batch의 `depends_on: api` 제거와 `run --no-deps`(배치 실행이 api를 다시 만들거나, api unhealthy 때 배치가 막히지 않게), `stop_grace_period: 30s`(Spring graceful shutdown 30초).
+  - 의도됨으로 둔 것: db `shm_size`(4.6만 건이라 64MB로 충분, shm은 메모리 한도에 들어가 늘리면 2GB 예산을 쓴다. "could not resize shared memory"가 보이면 올린다), `mem_limit` 합계 1,856MB(실측 대상, 힙을 낮춰 위험은 줄었다), jar 레이어 분리(`deploy.yml` PR에서 분리 전후 ECR push 크기를 재고 넣는다), 포트 80 전체 바인딩(보안 그룹이 막고 CloudFront 때 prefix list로 연다).
 - 기능성으로 찾기(`feat/category-filter`, PR #35). 원래 의도는 "성분을 몰라도 눈 건강 제품을 쇼핑"이라, `category=`를 성분 목록 안의 필터로만 두지 않고 `/explore`의 `ingredient`를 선택으로 바꿨다(성분·카테고리 중 하나 필수). 카테고리만 고르면 최신순이고 함량 조건은 400, 항목에 `functionalMaterials`·`categories`를 붙인다. 카테고리 목록 API(`GET /api/categories`), 비교·상세 응답 `categories`. 결정은 PLANNING.md "기능성으로 찾기".
   - 카테고리는 하나만, 검색 API에는 붙이지 않음(2026-11-13 사용자 확인). 인기순은 아직 없어(계획만 있음) 인기 순위 작업 때 제품별 조회 카운트로 붙인다.
   - `product_category` 조회용 엔티티(`ProductCategory`, 복합 키)를 core에 뒀다. 쓰기는 지금처럼 batch `CategoryLinker`(JDBC)만 한다.

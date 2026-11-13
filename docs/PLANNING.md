@@ -244,6 +244,7 @@ I0030을 비롯한 식약처·공공데이터 API에는 제품 이미지가 없�
 - Nginx 라우팅: `/api/*`·`/actuator/health`는 api 컨테이너로, 나머지(`/`)는 web(Next.js) 컨테이너로 넘긴다.
 - 기본 배포 범위(2026-11-09 정함): Nginx(위 라우팅만) + api + batch + db. web이 아직 없어서 `/`는 502가 나도 된다. 보안 그룹 80·443은 닫아 두고, 헬스 체크는 SSM으로 EC2 안에서 Nginx를 거쳐(`curl localhost/actuator/health`) 한다. batch는 초기 적재와 메모리 실측(batch 실행 중 `docker stats`·swap 피크) 때문에 함께 올린다.
   - CloudFront를 붙일 때 한꺼번에 넣는 것: `set_real_ip_from`·`real_ip_header`, `limit_req`, `/admin` IP 제한, 보안 그룹을 CloudFront prefix list로 열기. CloudFront를 거친 요청이 있어야 제대로 걸리는지 확인할 수 있어서 미룬다.
+- 이미지(2026-11-13): Dockerfile 하나(`ARG MODULE`)로 api·batch를 만든다. jar는 CI가 Gradle로 먼저 빌드한다. 운영 구성은 `compose.prod.yaml`, Nginx 설정은 `deploy/nginx/default.conf`.
 - 배포는 서비스 단위 교체(`docker compose pull api && docker compose up -d --no-deps api`). `docker compose down`은 배포에 쓰지 않는다.
 - CI/CD 단계: (1) 테스트·빌드·ECR 푸시 → (2) SSM으로 교체 → (3) 헬스 체크(`/actuator/health`) 실패 시 직전 태그로 자동 롤백.
 - 컨테이너별 `mem_limit`, JVM 힙 크기 조정. 2GB가 부족하면 t4g.medium 검토.
