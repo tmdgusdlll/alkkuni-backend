@@ -39,7 +39,7 @@ class ProductUpserterTest(
 
     @BeforeEach
     fun clean() {
-        jdbc.execute("TRUNCATE product, product_ingredient, ingestion_cursor")
+        jdbc.execute("TRUNCATE product, product_ingredient, product_category, ingestion_cursor")
     }
 
     // 잡은 트랜잭션 밖에서 커서를 읽고(advance) save한다. 분리된 객체의 변경이 DB에 반영되는지 확인한다.
@@ -157,6 +157,21 @@ class ProductUpserterTest(
         assertEquals("종근당바이오", brandOf("A"))
     }
 
+    @Test
+    fun `적재할 때 기능성 원문으로 카테고리를 쓰고 원문이 바뀌면 다시 쓴다`() {
+        upserter.upsert(listOf(row("A", VITAMIN)))
+        assertEquals(listOf("CHOLESTEROL"), categoriesOf("A"))
+
+        upserter.upsert(listOf(row("A", VITAMIN, functionality = "①눈 건강에 도움을 줄 수 있음 ②간 건강에 도움을 줄 수 있음")))
+        assertEquals(listOf("EYE", "LIVER"), categoriesOf("A"))
+    }
+
+    private fun categoriesOf(reportNo: String) = jdbc.queryForList(
+        "SELECT c.category FROM product_category c JOIN product p ON p.id = c.product_id WHERE p.report_no = ? ORDER BY 1",
+        String::class.java,
+        reportNo,
+    )
+
     private fun brandOf(reportNo: String) = jdbc.queryForObject(
         "SELECT b.name FROM product p LEFT JOIN brand b ON b.id = p.brand_id WHERE p.report_no = ?",
         String::class.java,
@@ -167,7 +182,13 @@ class ProductUpserterTest(
         jdbc.queryForObject("SELECT count(*) FROM product", Int::class.java)!! to
             jdbc.queryForObject("SELECT count(*) FROM product_ingredient", Int::class.java)!!
 
-    private fun row(reportNo: String, standardText: String, name: String = "제품", form: String? = "캡슐") = I0030Row(
+    private fun row(
+        reportNo: String,
+        standardText: String,
+        name: String = "제품",
+        form: String? = "캡슐",
+        functionality: String = "혈중 콜레스테롤 개선",
+    ) = I0030Row(
         reportNo = reportNo,
         name = name,
         manufacturer = "제조사",
@@ -177,7 +198,7 @@ class ProductUpserterTest(
         form = form,
         reportedOn = LocalDate.of(2020, 1, 15),
         functionalMaterials = "감마리놀렌산 함유 유지",
-        functionality = "혈중 콜레스테롤 개선",
+        functionality = functionality,
         precautions = "임산부는 섭취에 주의",
     )
 

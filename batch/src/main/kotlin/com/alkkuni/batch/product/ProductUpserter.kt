@@ -23,6 +23,7 @@ class ProductUpserter(
     private val productIngredientRepository: ProductIngredientRepository,
     private val dictionary: IngredientDictionary,
     private val brands: BrandDictionary,
+    private val categories: CategoryLinker,
 ) {
     /** 한 페이지를 한 트랜잭션으로 저장한다. 바뀌어서 다시 쓴 제품 수를 돌려준다. */
     @Transactional
@@ -59,6 +60,7 @@ class ProductUpserter(
             val result = IngredientAmountParser.parse(row.standardText ?: "")
             val reparsed = product.applyParse(row.standardText, result)
             val productId = productRepository.save(product).id!!
+            categories.relink(productId, product.functionality)
 
             if (reparsed) {
                 if (found != null) productIngredientRepository.deleteAllByProductId(productId)

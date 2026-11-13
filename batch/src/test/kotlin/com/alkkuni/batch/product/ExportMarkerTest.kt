@@ -32,7 +32,7 @@ class ExportMarkerTest(
 
     @BeforeEach
     fun clean() {
-        jdbc.execute("TRUNCATE product, product_ingredient")
+        jdbc.execute("TRUNCATE product, product_ingredient, product_category")
     }
 
     @Test

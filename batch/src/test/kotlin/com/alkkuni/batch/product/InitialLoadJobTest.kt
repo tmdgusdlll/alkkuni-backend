@@ -36,6 +36,7 @@ class InitialLoadJobTest {
         mock(ProductIngredientRepository::class.java),
         mock(IngredientDictionary::class.java),
         mock(BrandDictionary::class.java),
+        mock(CategoryLinker::class.java),
     ) {
         override fun upsert(rows: List<I0030Row>): Int = rows.size.also { rows.mapTo(received) { it.reportNo } }
     }
