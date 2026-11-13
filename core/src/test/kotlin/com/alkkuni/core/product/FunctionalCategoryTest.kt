@@ -30,6 +30,8 @@ class FunctionalCategoryTest {
             "알콜성 손상으로부터 간을 보호하는데 도움을 줄 수 있음(생리활성기능2등급)" to setOf(LIVER),
             "자외선에 의한 피부손상으로부터 피부건강을 유지하는데 도움을 줄 수 있음" to setOf(SKIN),
             "체내 칼슘 흡수 촉진에 도움을 줄 수 있음" to setOf(BONE),
+            "[홍삼] ①면역증진ㆍ피로개선에 도움을 줄 수 있음" to setOf(IMMUNE, FATIGUE),
+            "인터루킨4 감소를 통한 면역조절에 도움을 줄 수 있음" to setOf(IMMUNE),
             // U+0387(그리스 문자 가운뎃점)도 구분자다
             "식후 혈당상승 억제·배변활동 원활에 도움을 줄 수 있음" to setOf(FunctionalCategory.BLOOD_SUGAR, GUT),
         )

@@ -25,7 +25,7 @@ enum class FunctionalCategory(
     BODY_FAT("체지방", listOf("체지방")),
     GUT("장", listOf("배변", "유산균", "유해균", "유익균", "장건강", "장내"), listOf("요로", "질내")),
     STOMACH("위", listOf("위건강", "위점막", "헬리코박터", "위불편감")),
-    IMMUNE("면역", listOf("면역력", "면역기능"), listOf("면역과민")),
+    IMMUNE("면역", listOf("면역력", "면역기능", "면역증진", "면역조절"), listOf("면역과민")),
     FATIGUE("피로", listOf("피로"), listOf("눈의피로")),
     ANTIOXIDANT("항산화", listOf("항산화", "활성산소")),
     MEMORY("기억력·인지", listOf("기억력", "인지력", "인지기능")),

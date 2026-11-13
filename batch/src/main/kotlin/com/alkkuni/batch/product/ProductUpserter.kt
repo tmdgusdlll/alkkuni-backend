@@ -39,6 +39,9 @@ class ProductUpserter(
             // 규칙을 바꿔 VERSION을 올리면 다시 적재하는 것만으로 재판정된다(검수한 제품은 applyParse가 지킨다).
             if (found?.sourceHash == row.sourceHash && found.parserVersion == IngredientAmountParser.VERSION) continue
 
+            // 카테고리는 기능성 원문에서만 정해진다. 원문이 같으면 다시 쓰지 않는다(규칙 변경은 link-categories가 맡는다).
+            val functionalityChanged = found == null || found.functionality != row.functionality
+
             // 새 제품은 기준규격 없이 만들고, 기준규격과 판정(원료 여부 포함)은 applyParse가 채운다.
             val product = (found ?: Product(
                 reportNo = row.reportNo,
@@ -60,7 +63,7 @@ class ProductUpserter(
             val result = IngredientAmountParser.parse(row.standardText ?: "")
             val reparsed = product.applyParse(row.standardText, result)
             val productId = productRepository.save(product).id!!
-            categories.relink(productId, product.functionality)
+            if (functionalityChanged) categories.relink(productId, product.functionality)
 
             if (reparsed) {
                 if (found != null) productIngredientRepository.deleteAllByProductId(productId)

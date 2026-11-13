@@ -164,6 +164,10 @@ class ProductUpserterTest(
 
         upserter.upsert(listOf(row("A", VITAMIN, functionality = "①눈 건강에 도움을 줄 수 있음 ②간 건강에 도움을 줄 수 있음")))
         assertEquals(listOf("EYE", "LIVER"), categoriesOf("A"))
+
+        // 영양소 문구만 남으면 카테고리가 지워진다
+        upserter.upsert(listOf(row("A", VITAMIN, functionality = "정상적인 면역기능에 필요")))
+        assertEquals(emptyList<String>(), categoriesOf("A"))
     }
 
     private fun categoriesOf(reportNo: String) = jdbc.queryForList(
