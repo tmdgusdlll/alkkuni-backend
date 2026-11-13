@@ -1,6 +1,8 @@
 package com.alkkuni.core.product.repository
 
+import com.alkkuni.core.product.FunctionalCategory
 import com.alkkuni.core.product.entity.Product
+import com.alkkuni.core.product.entity.ProductCategory
 import com.alkkuni.core.product.entity.ProductIngredient
 import com.alkkuni.core.product.enums.BasisCheck
 import com.alkkuni.core.product.enums.ParseStatus
@@ -49,17 +51,20 @@ data class ExploreReference(
 /**
  * 성분별 제품 목록 조건. ingredientIds는 모두 든(AND) 제품, excludeIds는 하나라도 든 제품을 뺀다.
  * forms·brandIds가 비어 있으면 제형·브랜드를 가리지 않는다(고르면 그중 하나). references가 비어 있으면 기준 충족으로 거르지 않는다.
+ * category가 있으면 그 기능성 카테고리 제품만 낸다. 성분 없이 카테고리만 고르면 base가 null이고,
+ * 이때 함량순 정렬과 함량 범위는 쓸 수 없다(서비스가 거절한다).
  */
 data class ProductExploreCondition(
     val ingredientIds: List<Long>,
     val excludeIds: List<Long>,
     val forms: List<String>,
-    val base: ExploreBase,
+    val base: ExploreBase?,
     val min: BigDecimal?,
     val max: BigDecimal?,
     val references: List<ExploreReference> = emptyList(),
     val brandIds: List<Long> = emptyList(),
     val market: ProductMarket = ProductMarket.ALL,
+    val category: FunctionalCategory? = null,
 )
 
 data class ProductExploreRow(
@@ -72,6 +77,7 @@ data class ProductExploreRow(
     val parseStatus: ParseStatus,
     val brandId: Long?,
     val exportOnly: Boolean,
+    val functionalMaterials: String?,
 )
 
 /**
@@ -102,13 +108,14 @@ class ProductExploreRepository(
                     path(Product::parseStatus),
                     path(Product::brandId),
                     path(Product::exportOnly),
+                    path(Product::functionalMaterials),
                 ).from(entity(Product::class))
                     .whereAnd(*predicates(cond))
                     .orderBy(
                         // 수출용 제품(V14)은 어느 정렬이든 국내 제품 뒤다.
                         path(Product::exportOnly).asc(),
                         *when (sort) {
-                            ProductExploreSort.AMOUNT -> amountOrder(cond.base)
+                            ProductExploreSort.AMOUNT -> amountOrder(requireNotNull(cond.base))
                             ProductExploreSort.LATEST -> arrayOf(path(Product::reportedOn).desc().nullsLast())
                         },
                         path(Product::id).desc(),
@@ -140,6 +147,7 @@ class ProductExploreRepository(
         cond.excludeIds.takeIf { it.isNotEmpty() }?.let { ids -> notExists(hasIngredient("exc") { it.`in`(ids) }) },
         cond.forms.takeIf { it.isNotEmpty() }?.let { path(Product::form).`in`(it) },
         cond.brandIds.takeIf { it.isNotEmpty() }?.let { path(Product::brandId).`in`(it) },
+        cond.category?.let { exists(hasCategory(it)) },
         when (cond.market) {
             ProductMarket.ALL -> null
             ProductMarket.DOMESTIC -> path(Product::exportOnly).eq(false)
@@ -147,12 +155,21 @@ class ProductExploreRepository(
         },
         // 범위는 주 단위 값에만 건다. 둘 다 있으면 서브쿼리 하나(between)로 계산한다.
         when {
-            cond.min != null && cond.max != null -> mainAmount(cond.base, "rng").between(cond.min, cond.max)
-            cond.min != null -> mainAmount(cond.base, "rng").ge(cond.min)
-            cond.max != null -> mainAmount(cond.base, "rng").le(cond.max)
+            cond.min != null && cond.max != null -> mainAmount(requireNotNull(cond.base), "rng").between(cond.min, cond.max)
+            cond.min != null -> mainAmount(requireNotNull(cond.base), "rng").ge(cond.min)
+            cond.max != null -> mainAmount(requireNotNull(cond.base), "rng").le(cond.max)
             else -> null
         },
     )
+
+    // product_category의 PK가 (product_id, category)라 상관 서브쿼리가 PK로 바로 찾는다.
+    private fun Jpql.hasCategory(category: FunctionalCategory): Subquery<Long> {
+        val pc = entity(ProductCategory::class, "cat")
+        return select(pc(ProductCategory::productId))
+            .from(pc)
+            .whereAnd(pc(ProductCategory::productId).eq(path(Product::id)), pc(ProductCategory::category).eq(category))
+            .asSubquery()
+    }
 
     // ref가 있으면 비교 가능한 단위이고 1일 함량이 기준값 이상(상한 2배 이하)인 행만 센다. 같은 성분 행이 여러 개면 하나만 맞아도 된다.
     private fun Jpql.hasIngredient(

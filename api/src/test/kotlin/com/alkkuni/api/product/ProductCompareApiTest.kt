@@ -69,6 +69,18 @@ class ProductCompareApiTest(
     }
 
     @Test
+    fun `제품에 기능성 카테고리를 붙이고 없으면 빈 목록이다`() {
+        val a = product("루테인 A").also { ingredient(it, "아연", "8") }
+        val b = product("아연 B").also { ingredient(it, "아연", "8") }
+        jdbc.update("INSERT INTO product_category (product_id, category) VALUES (?, 'EYE')", a)
+
+        mvc.get("/api/products/compare") { param("ids", "$a,$b") }.andExpect {
+            jsonPath("$.data.products[0].categories[0].code") { value("EYE") }
+            jsonPath("$.data.products[1].categories") { isEmpty() }
+        }
+    }
+
+    @Test
     fun `제품에 수출용 여부를 붙인다`() {
         val a = product("아연 A(전량수출용)").also { ingredient(it, "아연", "8") }
         val b = product("아연 B").also { ingredient(it, "아연", "8") }

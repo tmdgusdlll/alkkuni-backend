@@ -1,6 +1,7 @@
 package com.alkkuni.api.product
 
 import com.alkkuni.api.brand.BrandRef
+import com.alkkuni.api.category.CategoryRef
 import com.alkkuni.core.ingredient.entity.Ingredient
 import com.alkkuni.core.product.enums.BasisCheck
 import com.alkkuni.core.product.enums.ParseStatus
@@ -10,10 +11,10 @@ import java.time.LocalDate
 
 data class ProductExploreResponse(
     val totalCount: Long,
-    // 고른 성분(요청 순서). items[].amounts가 같은 순서다.
+    // 고른 성분(요청 순서). items[].amounts가 같은 순서다. 카테고리만 골랐으면 빈 목록이다.
     val ingredients: List<ExploreIngredient>,
-    // 함량순 정렬과 함량 범위가 걸린 성분
-    val baseIngredientId: Long,
+    // 함량순 정렬과 함량 범위가 걸린 성분. 카테고리만 골랐으면 null이다.
+    val baseIngredientId: Long?,
     val items: List<ProductExploreItem>,
 )
 
@@ -40,6 +41,11 @@ data class ProductExploreItem(
     // 함량이 하루치로 확인됐는지. DAILY·PER_SERVING만 "1일 기준", 나머지는 "표시 기준량"(검색 API와 같음).
     val basisCheck: BasisCheck?,
     val parseStatus: ParseStatus,
+    // 기능성 원료 원문(I0030 INDIV_RAWMTRL_NM). 카테고리로 찾을 때 어떤 원료 제품인지 보여준다.
+    val functionalMaterials: String?,
+    // 기능성 카테고리(FunctionalCategory 순서). 없으면 빈 목록
+    val categories: List<CategoryRef>,
+    // 고른 성분의 함량(ingredients 순서). 카테고리만 골랐으면 빈 목록이다.
     val amounts: List<ExploreItemAmount>,
 )
 
@@ -58,7 +64,7 @@ fun Ingredient.toExploreIngredient() = ExploreIngredient(
     referenceUnit = referenceUnit,
 )
 
-fun ProductExploreRow.toExploreItem(brand: BrandRef?, amounts: List<ExploreItemAmount>) = ProductExploreItem(
+fun ProductExploreRow.toExploreItem(brand: BrandRef?, categories: List<CategoryRef>, amounts: List<ExploreItemAmount>) = ProductExploreItem(
     id = id,
     name = name,
     manufacturer = manufacturer,
@@ -68,5 +74,7 @@ fun ProductExploreRow.toExploreItem(brand: BrandRef?, amounts: List<ExploreItemA
     reportedOn = reportedOn,
     basisCheck = basisCheck,
     parseStatus = parseStatus,
+    functionalMaterials = functionalMaterials,
+    categories = categories,
     amounts = amounts,
 )

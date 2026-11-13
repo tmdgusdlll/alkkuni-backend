@@ -4,10 +4,12 @@ import com.alkkuni.api.common.ApiException
 import com.alkkuni.api.common.ErrorCode
 import com.alkkuni.api.common.ErrorDetail
 import com.alkkuni.api.brand.refsOf
+import com.alkkuni.api.category.refsOf
 import com.alkkuni.core.brand.repository.BrandRepository
 import com.alkkuni.core.ingredient.IngredientName
 import com.alkkuni.core.ingredient.repository.IngredientRepository
 import com.alkkuni.core.product.enums.ProductStatus
+import com.alkkuni.core.product.repository.ProductCategoryRepository
 import com.alkkuni.core.product.repository.ProductIngredientRepository
 import com.alkkuni.core.product.repository.ProductRepository
 import org.springframework.stereotype.Service
@@ -18,6 +20,7 @@ class ProductCompareService(
     private val productIngredientRepository: ProductIngredientRepository,
     private val ingredientRepository: IngredientRepository,
     private val brandRepository: BrandRepository,
+    private val productCategoryRepository: ProductCategoryRepository,
 ) {
 
     // "ids=5,"의 빈 원소는 null로 바인딩된다. Kotlin은 List<Long>의 원소 null을 검사하지 않아 Long?로 받는다.
@@ -54,7 +57,8 @@ class ProductCompareService(
             )
 
         val brands = brandRepository.refsOf(products.map { it.brandId })
-        return ProductCompareResponse(products.map { it.toCompareProduct(it.brandId?.let(brands::get)) }, ingredients)
+        val categories = productCategoryRepository.refsOf(ids)
+        return ProductCompareResponse(products.map { it.toCompareProduct(it.brandId?.let(brands::get), categories[it.id].orEmpty()) }, ingredients)
     }
 
     companion object {

@@ -1,6 +1,7 @@
 package com.alkkuni.api.product
 
 import com.alkkuni.api.brand.BrandRef
+import com.alkkuni.api.category.CategoryRef
 import com.alkkuni.core.ingredient.entity.Ingredient
 import com.alkkuni.core.product.entity.Product
 import com.alkkuni.core.product.entity.ProductIngredient
@@ -25,6 +26,8 @@ data class ProductDetailResponse(
     val intakeMethod: String?,
     val functionalMaterials: String?,
     val functionality: String?,
+    // 기능성 원문에서 판정한 카테고리(FunctionalCategory 순서). 없으면 빈 목록
+    val categories: List<CategoryRef>,
     val precautions: String?,
     // DAILY·PER_SERVING만 "1일 기준", 그 외는 "표시 기준량" 배지(검색·비교 API와 같은 규칙)
     val basisCheck: BasisCheck?,
@@ -70,7 +73,7 @@ data class DetailRecall(
     val listStatus: RecallListStatus,
 )
 
-fun Product.toDetailResponse(brand: BrandRef?, ingredients: List<DetailIngredient>, recalls: List<DetailRecall>) = ProductDetailResponse(
+fun Product.toDetailResponse(brand: BrandRef?, categories: List<CategoryRef>, ingredients: List<DetailIngredient>, recalls: List<DetailRecall>) = ProductDetailResponse(
     id = requireNotNull(id),
     reportNo = reportNo,
     name = name,
@@ -82,6 +85,7 @@ fun Product.toDetailResponse(brand: BrandRef?, ingredients: List<DetailIngredien
     intakeMethod = intakeMethod,
     functionalMaterials = functionalMaterials,
     functionality = functionality,
+    categories = categories,
     precautions = precautions,
     basisCheck = basisCheck,
     parseStatus = parseStatus,

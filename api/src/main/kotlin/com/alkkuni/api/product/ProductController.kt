@@ -46,12 +46,14 @@ class ProductController(
             .cacheControl(PUBLIC_CACHE)
             .body(ApiResponse.ok(compareService.compare(ids)))
 
-    // 성분별 제품 목록. ingredient=1,2(모두 포함), exclude=3(하나라도 들면 제외), form=정,캡슐, brand=4,5(그중 하나, 브랜드 목록 API의 id).
+    // 성분별 제품 목록. category=EYE(기능성 카테고리 하나, 카테고리 목록 API의 code)만으로도 부를 수 있다(성분·카테고리 중 하나는 필수).
+    // ingredient=1,2(모두 포함), exclude=3(하나라도 들면 제외), form=정,캡슐, brand=4,5(그중 하나, 브랜드 목록 API의 id).
     // min·max는 기준 성분의 1일 함량 범위이고 단위는 응답 ingredients[].defaultUnit(없으면 mg 등 저장 단위)이다.
     // meetsReference=true면 고른 성분 모두 1일 기준값 이상인 제품만 낸다. 기준값 유무는 성분 목록 API의 referenceAmount로 안다.
     @GetMapping("/explore")
     fun explore(
-        @RequestParam ingredient: List<Long?>,
+        @RequestParam(required = false) ingredient: List<Long?>?,
+        @RequestParam(required = false) category: String?,
         @RequestParam(required = false) exclude: List<Long?>?,
         @RequestParam(required = false) form: List<String>?,
         @RequestParam(required = false) brand: List<Long?>?,
@@ -59,13 +61,14 @@ class ProductController(
         @RequestParam(required = false) @PositiveOrZero @DecimalMax(MAX_AMOUNT) max: BigDecimal?,
         @RequestParam(defaultValue = "false") meetsReference: Boolean,
         @RequestParam(defaultValue = "all") market: String,
-        @RequestParam(defaultValue = "amount") sort: String,
+        // 없으면 성분이 있을 때 amount, 카테고리만 있을 때 latest
+        @RequestParam(required = false) sort: String?,
         @RequestParam(defaultValue = "0") @Min(0) @Max(MAX_PAGE) page: Int,
         @RequestParam(defaultValue = "20") @Min(1) @Max(50) size: Int,
     ): ResponseEntity<ApiResponse<ProductExploreResponse>> =
         ResponseEntity.ok()
             .cacheControl(PUBLIC_CACHE)
-            .body(ApiResponse.ok(exploreService.explore(ingredient, exclude.orEmpty(), form.orEmpty(), brand.orEmpty(), min, max, meetsReference, market, sort, page, size)))
+            .body(ApiResponse.ok(exploreService.explore(ingredient.orEmpty(), category, exclude.orEmpty(), form.orEmpty(), brand.orEmpty(), min, max, meetsReference, market, sort, page, size)))
 
     // 숫자가 아닌 id는 타입 변환 실패로 400이 된다. /compare·/explore는 리터럴 경로라 이 매핑보다 먼저 잡힌다.
     @GetMapping("/{id}")
