@@ -8,6 +8,13 @@ import java.math.BigDecimal
 import java.sql.ResultSet
 import java.time.LocalDate
 
+// 국내·수출 범위. ALL은 모두 보여주되 수출용(Product.exportOnly)을 뒤로 보낸다. 검색과 성분별 목록이 함께 쓴다.
+enum class ProductMarket {
+    ALL,
+    DOMESTIC,
+    EXPORT,
+}
+
 enum class ProductSearchSort {
     // 제품명·제조사 일치 먼저, 그다음 제품명 유사도
     RELEVANCE,
@@ -29,6 +36,7 @@ data class ProductSearchCondition(
     val suspectAbove: BigDecimal? = null,
     val comparableUnits: List<String> = emptyList(),
     val brandId: Long? = null,
+    val market: ProductMarket = ProductMarket.ALL,
 ) {
     // 공백을 뺀 글자 수. 길이 기준은 여기 한 곳에서만 정한다.
     private val length = q.count { !it.isWhitespace() }
@@ -60,6 +68,7 @@ data class ProductSearchRow(
     val basisCheck: BasisCheck?,
     val parseStatus: ParseStatus,
     val brandId: Long?,
+    val exportOnly: Boolean,
 )
 
 /**
@@ -99,7 +108,7 @@ class ProductSearchRepository(private val jdbc: JdbcClient) {
         }
         val sql = """
             ${hits(cond)}
-            SELECT p.id, p.name, p.manufacturer, p.form, p.reported_on, p.basis_check, p.parse_status, p.brand_id, a.daily_amount, a.daily_unit
+            SELECT p.id, p.name, p.manufacturer, p.form, p.reported_on, p.basis_check, p.parse_status, p.brand_id, p.export_only, a.daily_amount, a.daily_unit
             FROM hit p
             $amount
             -- 수출용 제품(V14)은 어느 정렬이든 국내 제품 뒤다.
@@ -116,6 +125,12 @@ class ProductSearchRepository(private val jdbc: JdbcClient) {
     // 검색어가 브랜드면 그 브랜드 제품을 맨 앞에 두고, 그 안에서는 제품명 유사도를 보지 않는다(같은 값 → 최신순).
     // 제품명에 브랜드 이름이 없는 제품("ATOMY …")은 유사도가 0에 가까워, 유사도로 정렬하면 브랜드 제품 중 맨 뒤로 밀린다
     // (로컬 "애터미" 347개 중 107개가 241위 이후).
+    private fun marketFilter(cond: ProductSearchCondition) = when (cond.market) {
+        ProductMarket.ALL -> ""
+        ProductMarket.DOMESTIC -> " AND NOT p.export_only"
+        ProductMarket.EXPORT -> " AND p.export_only"
+    }
+
     private fun brandFirst(cond: ProductSearchCondition) = if (cond.brandId != null) "(p.brand_id = :brandId) DESC NULLS LAST, " else ""
 
     private fun similarity(cond: ProductSearchCondition) =
@@ -146,7 +161,7 @@ class ProductSearchRepository(private val jdbc: JdbcClient) {
                        bool_or(h.text_match) AS text_match
                 FROM (${sources.joinToString(" UNION ALL ")}) h
                 JOIN product p ON p.id = h.id
-                WHERE p.status = 'ACTIVE' AND NOT p.raw_material
+                WHERE p.status = 'ACTIVE' AND NOT p.raw_material${marketFilter(cond)}
                 GROUP BY p.id
             )
         """
@@ -176,5 +191,6 @@ class ProductSearchRepository(private val jdbc: JdbcClient) {
         basisCheck = getString("basis_check")?.let(BasisCheck::valueOf),
         parseStatus = ParseStatus.valueOf(getString("parse_status")),
         brandId = getObject("brand_id", Long::class.javaObjectType),
+        exportOnly = getBoolean("export_only"),
     )
 }

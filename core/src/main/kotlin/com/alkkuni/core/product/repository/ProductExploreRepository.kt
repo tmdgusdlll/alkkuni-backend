@@ -59,6 +59,7 @@ data class ProductExploreCondition(
     val max: BigDecimal?,
     val references: List<ExploreReference> = emptyList(),
     val brandIds: List<Long> = emptyList(),
+    val market: ProductMarket = ProductMarket.ALL,
 )
 
 data class ProductExploreRow(
@@ -70,6 +71,7 @@ data class ProductExploreRow(
     val basisCheck: BasisCheck?,
     val parseStatus: ParseStatus,
     val brandId: Long?,
+    val exportOnly: Boolean,
 )
 
 /**
@@ -99,6 +101,7 @@ class ProductExploreRepository(
                     path(Product::basisCheck),
                     path(Product::parseStatus),
                     path(Product::brandId),
+                    path(Product::exportOnly),
                 ).from(entity(Product::class))
                     .whereAnd(*predicates(cond))
                     .orderBy(
@@ -137,6 +140,11 @@ class ProductExploreRepository(
         cond.excludeIds.takeIf { it.isNotEmpty() }?.let { ids -> notExists(hasIngredient("exc") { it.`in`(ids) }) },
         cond.forms.takeIf { it.isNotEmpty() }?.let { path(Product::form).`in`(it) },
         cond.brandIds.takeIf { it.isNotEmpty() }?.let { path(Product::brandId).`in`(it) },
+        when (cond.market) {
+            ProductMarket.ALL -> null
+            ProductMarket.DOMESTIC -> path(Product::exportOnly).eq(false)
+            ProductMarket.EXPORT -> path(Product::exportOnly).eq(true)
+        },
         // 범위는 주 단위 값에만 건다. 둘 다 있으면 서브쿼리 하나(between)로 계산한다.
         when {
             cond.min != null && cond.max != null -> mainAmount(cond.base, "rng").between(cond.min, cond.max)

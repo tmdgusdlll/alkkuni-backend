@@ -27,7 +27,7 @@ class ProductSearchService(
      * - 브랜드도 사전(brand_alias, 보류 표기 제외)으로 정확히 일치할 때만 그 브랜드 제품을 더한다("애터미" → "ATOMY …").
      * - 공백을 뺀 2자 미만은 성분명과 정확히 일치할 때만 받는다("철"). 1자 부분 일치는 결과가 너무 넓다.
      */
-    fun search(q: String, sort: String, page: Int, size: Int): ProductSearchResponse {
+    fun search(q: String, sort: String, market: String, page: Int, size: Int): ProductSearchResponse {
         val query = q.trim()
         val ingredient = ingredientRepository.findByAliasKey(IngredientName.normalize(query))
         val brand = brandRepository.findByAliasKey(BrandName.key(query))
@@ -38,6 +38,7 @@ class ProductSearchService(
             ingredient?.suspectAbove(),
             ingredient?.comparableUnits().orEmpty(),
             brand?.id,
+            parseMarket(market),
         )
         if (!cond.searchable) {
             throw ApiException(ErrorCode.INVALID_INPUT, listOf(ErrorDetail("q", "${ProductSearchCondition.TEXT_MIN_LENGTH}자 이상 입력해 주세요.")))

@@ -1,5 +1,6 @@
 package com.alkkuni.api.brand
 
+import com.alkkuni.core.product.ExportName
 import org.hamcrest.Matchers.contains
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -39,29 +40,34 @@ class BrandApiTest(
     }
 
     @Test
-    fun `공개 제품이 있는 브랜드만 제품 수 많은 순으로 낸다`() {
+    fun `공개 제품이 있는 브랜드를 국내 제품 수 많은 순으로 내고 국내·수출을 나눠 센다`() {
         product("광동", "광동 A")
         product("광동", "광동 B")
         product("애터미", "ATOMY A")
+        product("애터미", "ATOMY B(전량수출용)")
+        product("애터미", "ATOMY C(태국)")
         product("애터미", "ATOMY 원료", rawMaterial = true) // 세지 않는다
         product("애터미", "ATOMY 단종", status = "DELETED") // 세지 않는다
+        product("일동", "일동 D(수출용)") // 수출용만 있어도 목록에 나오고 맨 뒤다
         product("일양", "일양 원료", rawMaterial = true) // 공개 제품이 없어 목록에서 빠진다
 
         mvc.get("/api/brands").andExpect {
             status { isOk() }
             header { string("Cache-Control", "max-age=60, public") }
-            jsonPath("$.data[*].name") { value(contains("광동", "애터미")) }
-            jsonPath("$.data[*].productCount") { value(contains(2, 1)) }
+            // 전체 수로는 애터미(3)가 광동(2)보다 많지만 국내 제품 수로 정렬한다
+            jsonPath("$.data[*].name") { value(contains("광동", "애터미", "일동")) }
+            jsonPath("$.data[*].domesticCount") { value(contains(2, 1, 0)) }
+            jsonPath("$.data[*].exportCount") { value(contains(0, 2, 1)) }
         }
     }
 
     private fun product(brandName: String, name: String, rawMaterial: Boolean = false, status: String = "ACTIVE") {
         jdbc.update(
             """
-            INSERT INTO product (report_no, name, raw_material, status, parse_status, parser_version, brand_id)
-            VALUES (?, ?, ?, ?, 'PARSED', '1', (SELECT id FROM brand WHERE name = ?))
+            INSERT INTO product (report_no, name, raw_material, status, parse_status, parser_version, brand_id, export_only)
+            VALUES (?, ?, ?, ?, 'PARSED', '1', (SELECT id FROM brand WHERE name = ?), ?)
             """,
-            "R${seq++}", name, rawMaterial, status, brandName,
+            "R${seq++}", name, rawMaterial, status, brandName, ExportName.isExportOnly(name),
         )
     }
 }

@@ -28,6 +28,8 @@ data class ProductSearchItem(
     val manufacturer: String?,
     // 제품명에서 찾은 브랜드. 없으면 null(대부분)
     val brand: BrandRef?,
+    // 수출용 제품(제품명 표기로 판정). 화면은 "수출용" 배지를 단다. 기본 정렬에서 국내 제품 뒤에 온다.
+    val exportOnly: Boolean,
     val form: String?,
     val reportedOn: LocalDate?,
     // matchedIngredient의 1일 함량. 성분 검색이 아니거나 계산할 수 없으면 null.
@@ -49,6 +51,7 @@ fun ProductSearchRow.toItem(ingredient: Ingredient?, brand: BrandRef?) = Product
     name = name,
     manufacturer = manufacturer,
     brand = brand,
+    exportOnly = exportOnly,
     form = form,
     reportedOn = reportedOn,
     dailyAmount = dailyAmount,

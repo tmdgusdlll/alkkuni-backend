@@ -1,5 +1,6 @@
 package com.alkkuni.api.product
 
+import com.alkkuni.core.product.ExportName
 import org.hamcrest.Matchers.contains
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -64,6 +65,16 @@ class ProductCompareApiTest(
         mvc.get("/api/products/compare") { param("ids", "$a,$b") }.andExpect {
             jsonPath("$.data.products[0].brand.name") { value("애터미") }
             jsonPath("$.data.products[1].brand") { value(null as Any?) }
+        }
+    }
+
+    @Test
+    fun `제품에 수출용 여부를 붙인다`() {
+        val a = product("아연 A(전량수출용)").also { ingredient(it, "아연", "8") }
+        val b = product("아연 B").also { ingredient(it, "아연", "8") }
+
+        mvc.get("/api/products/compare") { param("ids", "$a,$b") }.andExpect {
+            jsonPath("$.data.products[*].exportOnly") { value(contains(true, false)) }
         }
     }
 
@@ -199,11 +210,11 @@ class ProductCompareApiTest(
         basisCheck: String? = null,
     ): Long = jdbc.queryForObject(
         """
-        INSERT INTO product (report_no, name, raw_material, status, parse_status, parser_version, basis_check)
-        VALUES (?, ?, false, ?, ?, '1', ?) RETURNING id
+        INSERT INTO product (report_no, name, raw_material, status, parse_status, parser_version, basis_check, export_only)
+        VALUES (?, ?, false, ?, ?, '1', ?, ?) RETURNING id
         """,
         Long::class.java,
-        "R${seq++}", name, status, parseStatus, basisCheck,
+        "R${seq++}", name, status, parseStatus, basisCheck, ExportName.isExportOnly(name),
     )!!
 
     private fun ingredient(productId: Long, ingredientName: String?, dailyAmount: String, rawName: String = ingredientName!!) {

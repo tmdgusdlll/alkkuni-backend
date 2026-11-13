@@ -1,5 +1,6 @@
 package com.alkkuni.api.product
 
+import com.alkkuni.core.product.ExportName
 import org.hamcrest.Matchers.contains
 import org.hamcrest.Matchers.containsInAnyOrder
 import org.junit.jupiter.api.BeforeEach
@@ -328,6 +329,21 @@ class ProductExploreApiTest(
         }
     }
 
+    @Test
+    fun `market으로 국내용만·수출용만 고르고 응답에 수출용 여부를 붙인다`() {
+        val export = product("아연 골드(수출용)").also { has(it, "아연", "30") }
+        val domestic = product("아연 베이직").also { has(it, "아연", "8") }
+
+        mvc.get("/api/products/explore") { param("ingredient", "${id("아연")}"); param("market", "domestic") }.andExpect {
+            jsonPath("$.data.items[*].id") { value(contains(domestic.toInt())) }
+            jsonPath("$.data.items[0].exportOnly") { value(false) }
+        }
+        mvc.get("/api/products/explore") { param("ingredient", "${id("아연")}"); param("market", "export") }.andExpect {
+            jsonPath("$.data.items[*].id") { value(contains(export.toInt())) }
+            jsonPath("$.data.items[0].exportOnly") { value(true) }
+        }
+    }
+
     private fun id(name: String): Long = jdbc.queryForObject("SELECT id FROM ingredient WHERE name = ?", Long::class.java, name)!!
 
     private fun linkBrand(productId: Long, brandName: String) {
@@ -342,11 +358,11 @@ class ProductExploreApiTest(
         status: String = "ACTIVE",
     ): Long = jdbc.queryForObject(
         """
-        INSERT INTO product (report_no, name, raw_material, status, parse_status, parser_version, reported_on, form)
-        VALUES (?, ?, ?, ?, 'PARSED', '1', ?, ?) RETURNING id
+        INSERT INTO product (report_no, name, raw_material, status, parse_status, parser_version, reported_on, form, export_only)
+        VALUES (?, ?, ?, ?, 'PARSED', '1', ?, ?, ?) RETURNING id
         """,
         Long::class.java,
-        "R${seq++}", name, rawMaterial, status, reportedOn, form,
+        "R${seq++}", name, rawMaterial, status, reportedOn, form, ExportName.isExportOnly(name),
     )!!
 
     private fun has(productId: Long, ingredientName: String, dailyAmount: String?, unit: String = "mg") {
