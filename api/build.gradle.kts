@@ -29,3 +29,8 @@ dependencies {
 tasks.bootRun {
     workingDir = rootDir
 }
+
+// Dockerfile이 모듈 이름으로 jar를 찾는다(-plain.jar와 섞이지 않게 이름을 고정).
+tasks.bootJar {
+    archiveFileName = "api.jar"
+}

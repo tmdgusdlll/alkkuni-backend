@@ -1,0 +1,74 @@
+# 운영(EC2 한 대): nginx + api + db, batch는 필요할 때 한 번 실행.
+# 값은 EC2의 .env(Parameter Store에서 받아 만든다)에서 읽는다: DB_NAME, DB_USERNAME, DB_PASSWORD, FOODSAFETY_API_KEY, IMAGE_REGISTRY, API_TAG, BATCH_TAG
+#
+# 띄우기:   docker compose -f compose.prod.yaml up -d
+# 배포:     docker compose -f compose.prod.yaml pull api && docker compose -f compose.prod.yaml up -d --no-deps api  (down은 쓰지 않는다)
+# 배치:     docker compose -f compose.prod.yaml run --rm batch --alkkuni.job=initial-load
+#
+# ponytail: mem_limit은 t4g.small(2GB)에 맞춘 첫 추정값이다. batch 실행 중 docker stats·swap 피크를 재서 고친다(PROGRESS.md 기본 배포).
+services:
+  nginx:
+    image: nginx:1.29-alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./deploy/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    restart: unless-stopped
+    mem_limit: 64m
+
+  api:
+    image: ${IMAGE_REGISTRY:-alkkuni}/alkkuni-api:${API_TAG:-latest}
+    environment: &app-env
+      # 공통 yaml의 기본 프로필이 local이라 빠지면 localhost DB로 접속한다.
+      SPRING_PROFILES_ACTIVE: prod
+      DB_URL: jdbc:postgresql://db:5432/${DB_NAME}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health | grep -q UP"]
+      interval: 15s
+      timeout: 5s
+      start_period: 60s
+      retries: 5
+    restart: unless-stopped
+    mem_limit: 640m
+
+  # up -d로는 뜨지 않는다(profiles). run으로 작업 하나를 돌리고 끝난다.
+  # api가 healthy여야 Flyway 마이그레이션이 끝난 상태다(batch는 validate만 한다).
+  batch:
+    image: ${IMAGE_REGISTRY:-alkkuni}/alkkuni-batch:${BATCH_TAG:-latest}
+    profiles: [job]
+    environment:
+      <<: *app-env
+      FOODSAFETY_API_KEY: ${FOODSAFETY_API_KEY}
+      # ponytail: 운영 원본은 S3에 둬야 한다(REVIEW.md). S3 RawStore 전까지 호스트 볼륨에 남긴다.
+      RAW_STORE_DIR: /app/data/raw
+    volumes:
+      - raw-data:/app/data/raw
+    depends_on:
+      api:
+        condition: service_healthy
+    mem_limit: 640m
+
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    mem_limit: 512m
+
+volumes:
+  db-data:
+  raw-data:
