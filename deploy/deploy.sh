@@ -50,7 +50,10 @@ for f in "${FILES[@]}"; do cp -p ".next/$f" "$f"; done
 rollback() {
   trap - ERR
   echo "배포 실패: $SHA" >&2
-  compose logs --tail 50 api >&2 || true
+  # 컨테이너 로그는 EC2에만 남긴다. SSM 출력은 공개 레포의 Actions 로그에 그대로 찍힌다.
+  mkdir -p logs
+  compose logs --no-color --tail 200 api > "logs/deploy-$SHA.log" 2>&1 || true
+  echo "api 로그: /opt/alkkuni/logs/deploy-$SHA.log (EC2에서 확인)" >&2
   if [ ! -d .prev ]; then
     echo "첫 배포라 되돌릴 것이 없다" >&2
     exit 1
