@@ -34,6 +34,7 @@
   - [x] 1일 기준값: 기준값·상한 V11·상한 2배 초과 판정(PR #24), "기준 충족" 필터(PR #25), 응답의 기준 대비 %·충족·상한 초과 경고와 기능성 원료 상한 V12
   - [ ] **다음**: ~~브랜드 사전(V13, 연결만)~~ → ~~응답 `brand`·검색 별칭·목록 브랜드 필터·브랜드 목록 API~~ → ~~수출용 제품 표시·정렬·필터(V14)~~ → ~~기능성 카테고리(판정·V15·`link-categories` → 목록 `category=` 필터·카테고리 목록 API·응답 `categories`)~~. 순서는 2026-11-08에 바꿨다(작업 로그). 수출용은 2026-11-13에 끼워 넣었다
   - [ ] ~~메인 인기 성분 비교(고정 목록)~~(백엔드 작업 없음: 프론트가 기존 성분별 목록 API로 고정 6개를 띄움, 2026-11-12 PLANNING.md "메인 인기 성분"), `product.image_url` 관리자 등록, 구매 링크(ADR-008). PLANNING.md MVP 표에 있는데 작업 순서에서 빠져 있었다(2026-11-07)
+  - [ ] 메인 통계 API(`GET /api/stats`: 제품 수·기준일)와 소식 목록 API(`GET /api/news`: 회수부터). 프론트 메인이 기다리는 것. PLANNING.md "메인 통계·소식 API"
   - [ ] 인기 순위(MVP 이후, 순서 미정): 날짜별 조회 카운트·순위 배치·`GET /api/home/popular`·k6로 카운트 성능 측정 → 결과로 DB 유지·Redis 도입 결정. PLANNING.md "메인 인기 성분" 2·3
   - [ ] ‖ 계측(기본 배포 메모리 실측 뒤): Micrometer Prometheus·JSON 구조화 로그, 모니터링 EC2(Grafana·Prometheus·Loki, Tailscale 접속), 서비스·서버 대시보드. PLANNING.md "모니터링·알림"
 - [ ] **3단계: 인증 + 서랍** ‖ 회수 매칭(batch)
@@ -155,12 +156,13 @@
 
 ## 작업 로그
 
-### 2026-11-15 (모니터링·관리자 화면 계획)
+### 2026-11-15 (모니터링·관리자 화면·메인 API 계획)
 - 모니터링·알림과 관리자 화면 위치를 정해 PLANNING.md에 기록(`docs/monitoring-plan`). 코드 변경 없음.
   - 모니터링 EC2에 Grafana·Prometheus·Loki 직접 운영. Grafana Cloud 무료 등급(에이전트만, 관리 부담 최소)도 비교했지만 직접 운영 경험을 택했다. 앱 EC2 2GB에 같이 올리는 안은 `mem_limit` 합계 때문에 제외. 서버가 늘어 ADR-004(월 3만원)를 넘으므로 띄울 때 ADR-004를 고친다.
   - 알림은 Grafana Alerting → Slack이 주, CloudWatch는 보조(두 EC2 상태 검사만, 모니터링 서버가 죽었을 때를 위해). n8n은 Slack을 Grafana가 직접 보내므로 지금 두지 않는다. 아침 요약·카카오톡·Slack 버튼 연동이 필요해지면 추가.
   - Grafana는 Tailscale로만 접속해 앱 EC2와 같은 "인바운드 0개" 원칙을 지킨다. 아이패드는 Grafana kiosk 현황판 + 관리자 웹.
   - 관리자 웹은 Next.js `/admin`(PLANNING.md "별도 관리자 서버 없음"과 같은 방향). 보기는 Grafana, 조작은 관리자 웹으로 나눈다.
+- 메인 통계·소식 API를 계획에 추가(PLANNING.md "메인 통계·소식 API"). 프론트 PROGRESS의 "백엔드에 걸린 것"에 있었는데 백엔드 계획에 빠져 있었다. 2단계 남은 작업과 함께 한다. 소식의 날짜는 `recall`에 원본 등록일이 없어(`first_seen_at`만 있음) 구현 PR에서 정한다.
 
 ### 2026-11-13
 - Dockerfile·운영 compose·Nginx(`chore/dockerfile`, PR #36). 기본 배포의 첫 단위다.
