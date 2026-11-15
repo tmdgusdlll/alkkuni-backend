@@ -1,0 +1,117 @@
+# build(테스트)는 PR·main 푸시 모두, deploy는 main 푸시에서 build가 성공했을 때만 돈다.
+# AWS 권한(id-token: write)은 deploy job에만 준다. 포크 PR은 if에서 걸러지고, IAM 신뢰 정책도 main만 받는다.
+name: CI/CD
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: ci-cd-${{ github.ref }}
+  # PR은 새 커밋이 오면 이전 실행을 버린다. main은 배포 중에 끊기면 서버가 어중간한 상태로 남아서 취소하지 않는다.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+env:
+  AWS_REGION: ap-northeast-2
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v6
+      # build가 bootJar까지 만든다(api.jar, batch.jar). deploy가 다시 빌드하지 않게 넘긴다.
+      - run: ./gradlew build
+      - if: github.event_name == 'push'
+        uses: actions/upload-artifact@v7
+        with:
+          name: jars
+          path: |
+            api/build/libs/api.jar
+            batch/build/libs/batch.jar
+          if-no-files-found: error
+          retention-days: 1
+
+  deploy:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # t4g(ARM)용 이미지를 QEMU 없이 네이티브로 빌드한다.
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    concurrency:
+      group: deploy
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: jars
+      # AWS 자격 증명을 다루는 서드파티 액션은 커밋 SHA로 고정한다(태그는 옮겨질 수 있다). 올릴 때 SHA와 주석을 같이 바꾼다.
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2.1.7
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      # 태그는 sha(롤백용)와 latest. provenance를 끄는 이유: 증명 매니페스트도 ECR 수명 주기의 "이미지 10개"에 세어진다.
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          build-args: MODULE=api
+          platforms: linux/arm64
+          push: true
+          provenance: false
+          tags: |
+            ${{ steps.ecr.outputs.registry }}/alkkuni-api:${{ github.sha }}
+            ${{ steps.ecr.outputs.registry }}/alkkuni-api:latest
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,scope=api,mode=max
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          build-args: MODULE=batch
+          platforms: linux/arm64
+          push: true
+          provenance: false
+          tags: |
+            ${{ steps.ecr.outputs.registry }}/alkkuni-batch:${{ github.sha }}
+            ${{ steps.ecr.outputs.registry }}/alkkuni-batch:latest
+          cache-from: type=gha,scope=batch
+          cache-to: type=gha,scope=batch,mode=max
+      # EC2에서 이 커밋의 deploy.sh를 받아 실행한다(SSH 없이 SSM 에이전트가 실행). 헬스 체크까지 EC2 안에서 한다.
+      - name: EC2에 배포
+        env:
+          INSTANCE_ID: ${{ vars.EC2_INSTANCE_ID }}
+          RAW_BASE: https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}
+          SHA: ${{ github.sha }}
+        run: |
+          params=$(jq -n --arg c "set -euo pipefail
+          mkdir -p /opt/alkkuni/deploy
+          curl -fsSL $RAW_BASE/deploy/deploy.sh -o /opt/alkkuni/deploy/deploy.sh
+          bash /opt/alkkuni/deploy/deploy.sh $SHA" '{commands: [$c], executionTimeout: ["600"]}')
+          id=$(aws ssm send-command --instance-ids "$INSTANCE_ID" --document-name AWS-RunShellScript \
+            --comment "deploy $SHA" --parameters "$params" --query Command.CommandId --output text)
+          # aws ssm wait는 약 100초에서 끝나 api 기동(최대 3분)보다 짧다. 직접 기다린다.
+          for _ in $(seq 120); do
+            sleep 5
+            status=$(aws ssm get-command-invocation --command-id "$id" --instance-id "$INSTANCE_ID" \
+              --query Status --output text 2>/dev/null || echo Pending)
+            case "$status" in Pending|InProgress|Delayed) continue ;; esac
+            break
+          done
+          aws ssm get-command-invocation --command-id "$id" --instance-id "$INSTANCE_ID" \
+            --query '[StandardOutputContent, StandardErrorContent]' --output text
+          echo "SSM 상태: $status"
+          test "$status" = Success

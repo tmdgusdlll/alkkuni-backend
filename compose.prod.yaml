@@ -1,11 +1,11 @@
 # 운영(EC2 한 대): nginx + api + db, batch는 필요할 때 한 번 실행.
-# 값은 EC2의 .env(Parameter Store에서 받아 만든다)에서 읽는다: DB_NAME, DB_USERNAME, DB_PASSWORD, FOODSAFETY_API_KEY, IMAGE_REGISTRY, API_TAG, BATCH_TAG
+# 값은 EC2의 .env에서 읽는다: DB_NAME, DB_USERNAME, DB_PASSWORD, FOODSAFETY_API_KEY, IMAGE_REGISTRY, API_TAG, BATCH_TAG
+# .env는 deploy/deploy.sh가 배포 때마다 Parameter Store(/alkkuni/prod)에서 다시 만들고, 태그는 배포한 커밋 sha로 둔다.
 #
-# 띄우기:   docker compose -f compose.prod.yaml up -d
-# 배포:     docker compose -f compose.prod.yaml pull api && docker compose -f compose.prod.yaml up -d --no-deps api  (down은 쓰지 않는다)
-# 배치:     docker compose -f compose.prod.yaml run --rm --no-deps batch --alkkuni.job=initial-load
+# 배포:     deploy/deploy.sh <sha> (ci-cd.yml이 SSM으로 부른다). pull 후 up -d --no-deps --wait api, down은 쓰지 않는다
+# 배치:     deploy/run-job.sh initial-load
 #           api가 healthy(Flyway 끝)인 뒤에만 돌린다(batch는 validate만 한다). depends_on으로 걸면 run이 api를 다시 만들거나
-#           api가 unhealthy일 때 배치가 안 돌아서, 순서는 deploy.yml·cron이 헬스를 확인해 지킨다.
+#           api가 unhealthy일 때 배치가 안 돌아서, 순서는 run-job.sh가 헬스를 확인해 지킨다.
 #
 # ponytail: mem_limit은 t4g.small(2GB)에 맞춘 첫 추정값이다. batch 실행 중 docker stats·swap 피크를 재서 고친다(PROGRESS.md 기본 배포).
 # 로그 회전. 기본 json-file은 끝없이 쌓여 EBS가 차면 DB 쓰기·배포가 멈춘다.
