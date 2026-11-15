@@ -87,14 +87,14 @@
 5. 기본 배포(1단계 병렬 레인): ECR 푸시 → EC2. 처음엔 3주차 CloudFront 때로 미뤘지만, 웹훅·SES 도메인·메모리 실측이 모두 배포를 기다려 앞당김
    - [x] Dockerfile·운영 compose·Nginx(`chore/dockerfile`, 2026-11-13). 정한 것: CI가 `bootJar`로 만든 jar를 복사하는 Dockerfile 하나(`ARG MODULE`, jar 이름 `api.jar`·`batch.jar` 고정), 프로필·메모리·헬스 체크는 `compose.prod.yaml`
    - 다음: AWS 준비(직접: ECR 2개, OIDC IAM 역할, EC2·swap·Docker·SSM, Parameter Store) → `ci-cd.yml` 배포 job 첫 실행 → S3 `RawStore`(별도 PR) → 운영 첫 실행(초기 적재 → `link-ingredients` → `link-brands` → `mark-export` → `link-categories`)과 메모리 실측
-   - 정함(2026-11-13): OIDC IAM 역할(`alkkuni-deploy`) 범위는 이 레포 `main`만(`sub` 정확히 일치, PR·포크는 못 받음), ECR 2개 푸시 + 해당 인스턴스 하나에 `AWS-RunShellScript` `SendCommand`만. 공개 레포라 포크 PR의 워크플로가 AWS를 만지지 못하게 하고, 액션이 털려도 피해가 서버 한 대 안에서 끝나게 한다. 배포 job에 `environment:`를 쓰면 `sub`가 바뀌므로 신뢰 정책도 같이 고친다
+   - 정함(2026-11-13): OIDC IAM 역할(`alkkuni-deploy`) 범위는 이 레포 `main`만(`sub` 정확히 일치, PR·포크는 못 받음), ECR 2개 푸시 + 해당 인스턴스 하나에 `AWS-RunShellScript` `SendCommand`와 그 결과 조회(`GetCommandInvocation`)만. 공개 레포라 포크 PR의 워크플로가 AWS를 만지지 못하게 하고, 액션이 털려도 피해가 서버 한 대 안에서 끝나게 한다. 배포 job에 `environment:`를 쓰면 `sub`가 바뀌므로 신뢰 정책도 같이 고친다
    - 정함(2026-11-07): t4g.small로 시작, 탄력적 IP 연결, swap 1~2GB. 메모리 실측 뒤 부족하면 medium(PLANNING.md "배포")
    - 검증: EC2에서 `/actuator/health` UP
    - 확인: 운영 compose(또는 Dockerfile)에 `SPRING_PROFILES_ACTIVE=prod` 지정. 공통 yaml의 기본 프로필이 `local`이라 빠지면 `localhost` DB로 접속을 시도한다
    - 확인: 운영 DB 비밀번호는 새로 생성해 Parameter Store에 둔다. `.env.example` 값은 로컬 전용 예시
    - [x] 워크플로·배포 스크립트(`chore/ci-cd`, 2026-11-15). AWS 리소스가 없어 배포 job은 아직 돌려 보지 못했다. 첫 main 푸시가 첫 실행
    - 정함(2026-11-15): `ci.yml`을 `ci-cd.yml` 하나로 합친다. `deploy` job이 `needs: build`로 테스트 통과를 기다리고, `id-token: write`는 이 job에만 준다
-   - 정함(2026-11-15): EC2 파일은 배포한 커밋 sha의 raw GitHub에서 받는다(`deploy.sh`가 compose·Nginx 설정·`run-job.sh`를 내려받음). `.env`는 배포 때마다 Parameter Store에서 다시 만들고 `API_TAG`·`BATCH_TAG`는 그 sha. 롤백은 이전 sha로 `deploy.sh`를 다시 실행
+   - 정함(2026-11-15): EC2 파일은 배포한 커밋 sha의 raw GitHub에서 받는다(`deploy.sh`가 compose·Nginx 설정·`run-job.sh`를 내려받음). `.env`는 배포 때마다 Parameter Store에서 다시 만들고 `API_TAG`·`BATCH_TAG`는 그 sha. 실패 시 직전 배포 파일(`.prev`)로 자동 롤백, 더 이전은 그 sha로 `deploy.sh`를 다시 실행
    - 이미지: t4g(ARM)라 `linux/arm64`로 빌드. QEMU보다 `ubuntu-24.04-arm` 러너 네이티브 빌드 우선 검토
    - 태그: `latest`와 `github.sha`를 함께 붙여 롤백할 이미지를 남긴다. 레이어 캐시는 `cache-from/to: type=gha`
    - 배포 job은 `concurrency`의 `cancel-in-progress: false`(중간에 끊기면 서버가 어중간한 상태로 남음)
@@ -159,13 +159,14 @@
 ## 작업 로그
 
 ### 2026-11-15
-- CI/CD 워크플로와 배포 스크립트(`chore/ci-cd`)
+- CI/CD 워크플로와 배포 스크립트(`chore/ci-cd`, PR #37)
   - `ci.yml`과 따로 두려던 `deploy.yml`을 `ci-cd.yml` 하나로 합쳤다(11-13 "분리" 결정을 뒤집음). 파일을 나누면 배포가 CI 완료를 `needs`로 기다릴 수 없어 `workflow_run`이 필요하고 흐름이 두 파일로 갈린다. 권한은 job별 `permissions`로 배포 job에만 `id-token: write`, 포크 PR은 `if`(main 푸시만)와 IAM 신뢰 정책 `sub`가 막는다. 필수 체크 이름은 job 이름(`build`)이라 바뀌지 않는다.
-  - 워크플로 전체 `cancel-in-progress`는 PR일 때만 켠다. main에서 켜면 연속 푸시 때 배포 중인 실행이 취소된다. 배포 job은 별도 `concurrency: deploy`(취소 안 함).
+  - 워크플로 전체 `cancel-in-progress`는 PR일 때만 켠다. main에서 켜면 연속 푸시 때 배포 중인 실행이 취소된다. main 실행은 같은 그룹이라 한 번에 하나씩 돌아 배포가 겹치지 않는다. 배포 job에 따로 그룹을 두지 않는다(리뷰 반영, 중복).
   - 배포 job은 `ubuntu-24.04-arm`에서 arm64 이미지를 네이티브로 빌드, `provenance: false`(증명 매니페스트도 ECR 수명 주기 10개에 세어짐), 태그 sha·latest. SSM `send-command`로 이 커밋의 `deploy/deploy.sh`를 실행하고 결과를 5초 간격으로 최대 10분 기다린다(`aws ssm wait`는 약 100초로 짧다).
-  - `deploy/deploy.sh`: 파일 받기 → `.env` 재생성 → ECR 로그인·pull → `up -d db nginx` → `up -d --no-deps --wait api`(180초) → Nginx reload → Nginx를 거친 `/actuator/health`. 실패해도 자동 롤백은 없다.
+  - `deploy/deploy.sh`: 새 파일(compose·Nginx 설정·`run-job.sh`·`.env`)을 `.next/`에 받고 ECR pull까지 성공해야 교체한다. 교체 전 파일은 `.prev/`. 이후 `up -d --wait db nginx` → `up -d --no-deps --wait api`(180초) → Nginx reload → Nginx를 거친 `/actuator/health` 중 하나라도 실패하면 `.prev/`로 되돌려 다시 띄우고 실패로 끝난다(REVIEW.md "헬스 체크 실패 시 롤백"). 이미지 태그가 `.env`에 있어 파일 묶음을 되돌리면 이미지도 되돌아간다. 적용된 마이그레이션은 남고, 첫 배포는 되돌릴 것이 없어 실패만 한다. 가짜 docker·aws·curl로 성공·api 실패 롤백·pull 실패(무변경)·Nginx 실패 롤백·롤백 실패·작은따옴표 값 거부·첫 배포 실패 7가지를 확인.
   - `deploy/run-job.sh`: api healthy를 2분까지 확인한 뒤 `run --rm --no-deps batch`. PR #36에서 batch `depends_on: api`를 빼서 순서 확인을 여기로 모았다. cron 등록은 운영 첫 실행 때.
   - 확인: actionlint·shellcheck 통과, `compose.prod.yaml config` 통과. 배포 job은 AWS 리소스가 없어 실행하지 못했다.
+  - `/code-review` 반영: 자동 롤백(위), ERR trap이 함수 안 실패에도 걸리게 `set -E`(시뮬레이션에서 롤백이 안 돈 원인), db를 healthy까지 기다림(api를 `--no-deps`로 띄워 첫 배포에 initdb 전 접속 실패), SSM 래퍼 `set -eu`(Ubuntu `/bin/sh`는 dash라 `pipefail`이 없어 첫 줄에서 실패), `.env` 값 작은따옴표 감싸기(compose가 `$`·` #`를 해석해 비밀번호가 조용히 잘림), 결과 폴링은 `InvocationDoesNotExist`만 대기로 보고 다른 오류는 바로 실패. 의도됨: 레포 경로를 `deploy.sh`에 둠(직접 롤백 실행 때 인자 하나로 끝나게), DB 비밀번호 변경은 `ALTER USER` 먼저(주석).
 
 ### 2026-11-13
 - Dockerfile·운영 compose·Nginx(`chore/dockerfile`, PR #36). 기본 배포의 첫 단위다.

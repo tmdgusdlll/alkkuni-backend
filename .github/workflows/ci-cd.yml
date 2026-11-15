@@ -10,6 +10,7 @@ permissions:
 concurrency:
   group: ci-cd-${{ github.ref }}
   # PR은 새 커밋이 오면 이전 실행을 버린다. main은 배포 중에 끊기면 서버가 어중간한 상태로 남아서 취소하지 않는다.
+  # main 실행은 이 그룹으로 한 번에 하나씩 돌아 배포가 겹치지 않는다(대기는 최신 하나만 남는다).
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 env:
   AWS_REGION: ap-northeast-2
@@ -47,9 +48,6 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    concurrency:
-      group: deploy
-      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v7
         with:
@@ -97,7 +95,8 @@ jobs:
           RAW_BASE: https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}
           SHA: ${{ github.sha }}
         run: |
-          params=$(jq -n --arg c "set -euo pipefail
+          # AWS-RunShellScript는 /bin/sh로 돈다(Ubuntu는 dash라 pipefail이 없다). deploy.sh는 bash로 부른다.
+          params=$(jq -n --arg c "set -eu
           mkdir -p /opt/alkkuni/deploy
           curl -fsSL $RAW_BASE/deploy/deploy.sh -o /opt/alkkuni/deploy/deploy.sh
           bash /opt/alkkuni/deploy/deploy.sh $SHA" '{commands: [$c], executionTimeout: ["600"]}')
@@ -106,8 +105,13 @@ jobs:
           # aws ssm wait는 약 100초에서 끝나 api 기동(최대 3분)보다 짧다. 직접 기다린다.
           for _ in $(seq 120); do
             sleep 5
-            status=$(aws ssm get-command-invocation --command-id "$id" --instance-id "$INSTANCE_ID" \
-              --query Status --output text 2>/dev/null || echo Pending)
+            # 명령을 보낸 직후엔 InvocationDoesNotExist가 난다. 그 외 오류(권한 등)는 숨기지 않고 바로 실패한다.
+            if ! status=$(aws ssm get-command-invocation --command-id "$id" --instance-id "$INSTANCE_ID" \
+              --query Status --output text 2>&1); then
+              case "$status" in *InvocationDoesNotExist*) continue ;; esac
+              echo "$status" >&2
+              exit 1
+            fi
             case "$status" in Pending|InProgress|Delayed) continue ;; esac
             break
           done
