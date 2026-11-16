@@ -53,7 +53,7 @@
    - 실행 잠금은 `JobLock`(advisory lock, 출처별 키). 새 배치 작업도 `jobLock.withLock(출처)`로 감싼다
    - 날짜는 주입한 `Clock`(Asia/Seoul)으로 계산한다. `LocalDate.now()`를 직접 쓰지 않는다
    - (배포 때) `alkkuni.job` 값에 오타가 있으면 아무 작업도 안 하고 정상 종료한다. cron 명령을 만들 때 "성공 로그가 없으면 알람"으로 잡는다
-   - 운영 원본 저장은 S3. 지금 `RawStore`는 로컬 파일 시스템만(3주차 배포 때)
+   - 운영 원본 저장은 S3(`S3RawStore`, `alkkuni.raw-store.type=s3`). 로컬·테스트는 `LocalRawStore`(기본값)
    - (배포 때) V14 적용 뒤 `alkkuni.job=mark-export`를 한 번 돌린다. 그 전까지 기존 제품은 모두 국내용(false)으로 보인다. 판정 규칙(`ExportName`)을 바꿀 때도 이 작업만 다시 돌린다
    - (배포 때) V15 적용 뒤 `alkkuni.job=link-categories`를 한 번 돌린다. 그 전까지 기존 제품은 카테고리가 없다. 판정 규칙(`FunctionalCategory`)을 바꿀 때도 이 작업만 다시 돌린다
    - (배포 때) 브랜드 사전 마이그레이션(V13 이후 사전 수정 포함)을 적용한 뒤 `alkkuni.job=link-brands`를 한 번 돌린다. 적재 때 연결은 원본·판정 버전이 바뀐 제품만 타서, 이미 적재된 제품은 이 작업으로만 `brand_id`가 채워진다
@@ -89,7 +89,8 @@
    - 인증 PR에서: CloudFront → Nginx → API를 거치면 Spring이 리다이렉트 URI를 http나 EC2 주소로 만들 수 있다. `forward-headers-strategy` 또는 운영 `redirect-uri` 고정
 5. 기본 배포(1단계 병렬 레인): ECR 푸시 → EC2. 처음엔 3주차 CloudFront 때로 미뤘지만, 웹훅·SES 도메인·메모리 실측이 모두 배포를 기다려 앞당김
    - [x] Dockerfile·운영 compose·Nginx(`chore/dockerfile`, 2026-11-13). 정한 것: CI가 `bootJar`로 만든 jar를 복사하는 Dockerfile 하나(`ARG MODULE`, jar 이름 `api.jar`·`batch.jar` 고정), 프로필·메모리·헬스 체크는 `compose.prod.yaml`
-   - 다음: AWS 준비(직접: ECR 2개, OIDC IAM 역할, EC2·swap·Docker·SSM, Parameter Store) → `ci-cd.yml` 배포 job 첫 실행 → S3 `RawStore`(별도 PR) → 운영 첫 실행(초기 적재 → `link-ingredients` → `link-brands` → `mark-export` → `link-categories`)과 메모리 실측
+   - [x] AWS 준비, `ci-cd.yml` 첫 배포(PR #37)·두 번째 배포(PR #38, `.prev/` 확인) (2026-11-16)
+   - 다음: S3 `RawStore`(`feat/s3-raw-store`) → 운영 첫 실행(초기 적재 → `link-ingredients` → `link-brands` → `mark-export` → `link-categories`)과 메모리 실측
    - 정함(2026-11-13): OIDC IAM 역할(`alkkuni-deploy`) 범위는 이 레포 `main`만(`sub` 정확히 일치, PR·포크는 못 받음), ECR 2개 푸시 + 해당 인스턴스 하나에 `AWS-RunShellScript` `SendCommand`와 그 결과 조회(`GetCommandInvocation`)만. 공개 레포라 포크 PR의 워크플로가 AWS를 만지지 못하게 하고, 액션이 털려도 피해가 서버 한 대 안에서 끝나게 한다. 배포 job에 `environment:`를 쓰면 `sub`가 바뀌므로 신뢰 정책도 같이 고친다
    - 정함(2026-11-07): t4g.small로 시작, 탄력적 IP 연결, swap 1~2GB. 메모리 실측 뒤 부족하면 medium(PLANNING.md "배포")
    - 검증: EC2에서 `/actuator/health` UP
@@ -160,6 +161,17 @@
 - [ ] 상표(KIPRIS) 확인 (도메인은 `kuromi.click`으로 확보, 2026-11-06)
 
 ## 작업 로그
+
+### 2026-11-16 (S3 RawStore, 첫 배포)
+- 첫 배포(PR #37) 성공, `api healthy: 31초`. 처음엔 OIDC 신뢰 정책의 `sub`가 맞지 않아 `AssumeRoleWithWebIdentity`에서 거절됐다. 이 레포는 GitHub immutable subject가 켜져 있어 `sub`가 `repo:<owner>@<ownerID>/<repo>@<repoID>:ref:...` 형식이다. 신뢰 정책을 이 값으로 고쳤다(`StringEquals` 유지). 두 번째 배포(PR #38)도 31초, `.prev/` 백업 확인.
+- 유휴 메모리 기준값(두 번째 배포 직후, 데이터 없음): api 316.5MiB/640, db 53.4MiB/512, nginx 4.3MiB/64, 호스트 used 671Mi·available 973Mi, swap 0. 컨테이너 합계 약 374MiB라 OS·Docker·SSM 몫이 약 300MiB. 평소(3개)는 여유가 있고, batch가 붙는 적재 중 피크는 운영 첫 적재에서 잰다(미해결 질문 "2GB로 컨테이너 4개").
+- `RawStore`를 인터페이스로 바꾸고 `LocalRawStore`(기존 코드)·`S3RawStore`로 나눴다. `alkkuni.raw-store.type`(기본 local)으로 고르고, 운영 compose가 `s3`와 `RAW_STORE_BUCKET`(Parameter Store)을 넘긴다. 키는 `raw/{service}/{수집 시각}/{name}`으로 로컬 경로와 같은 모양이다. 자격 증명은 EC2 인스턴스 역할(SDK 기본 체인).
+  - 고른 방식: batch 코드에서 페이지마다 바로 올린다. 호스트에서 batch가 끝난 뒤 `aws s3 sync`로 올리는 안(코드 변경 0)도 봤지만, Docker 볼륨 내부 경로에 묶이고 업로드 전에 EC2가 죽으면 그 회차 원본을 잃고 로컬 정리가 따로 필요해서 버렸다. 원본을 먼저 저장한다(ADR-002)는 순서도 코드에서 바로 올려야 지켜진다.
+  - 올리기에 실패하면(SDK 재시도 뒤) 예외로 잡이 실패한다. 원본 없이 적재를 이어가지 않는다.
+  - AWS SDK v2 `s3`만 직접 쓴다(쓰는 건 `putObject` 하나라 Spring Cloud AWS는 과하다). HTTP 클라이언트는 JDK 기반 `url-connection-client`만 두고 기본으로 딸려오는 `netty-nio-client`·`apache5-client`(2.59부터 동기 기본값)는 뺐다. batch.jar 52.5MB → 63.7MB(기본 클라이언트) → 61.3MB(+8.9MB, 대부분 `s3` 4.4MB·`sdk-core` 1.1MB·`regions` 1.0MB). 메모리 영향은 첫 적재에서 같이 잰다.
+  - 테스트: LocalStack(Testcontainers, `localstack/localstack:4.9` 고정)으로 키·본문, 없는 버킷 예외, 설정값으로 구현 선택을 확인.
+  - `/code-review` 8건 중 4건 반영: 버킷이 비면 기동에서 실패(`require`, 수집 시작 뒤가 아니라), `apache5-client` 대신 `url-connection-client`(위), Dockerfile의 `data/raw` 볼륨 주석·mkdir 정리, `destroyMethod` 중복 제거. 확인한 1건: 컨테이너가 인스턴스 역할을 받으려면 IMDSv2 hop limit 2 이상이어야 한다. EC2에서 `docker run --rm amazon/aws-cli sts get-caller-identity`가 `assumed-role/alkkuni-ec2`로 나와 통과(AL2023 기본값). 넘긴 3건: `RAW_STORE_BUCKET` 없으면 배포 실패(Parameter Store 값을 먼저 만들어 해결), 남는 `raw-data` 볼륨(비어 있음, EC2에서 `docker volume rm alkkuni_raw-data`), 리전 하드코딩(`deploy.sh`도 같은 값을 고정, 리전을 옮길 계획 없음).
+  - 운영 `raw-data` 볼륨과 `RAW_STORE_DIR`은 지웠다(운영에서 batch를 돌린 적이 없어 옮길 원본이 없다). `RAW_STORE_BUCKET`이 `.env`에 없으면 compose가 시작되지 않으니, Parameter Store 값을 먼저 만들고 머지한다.
 
 ### 2026-11-16 (제품 이미지 작업 나눔)
 - `product.image_url` 관리자 등록을 둘로 나눴다. 관리자 권한(`Member.role`)은 3단계, 관리자 API는 4단계에 있어서 2단계 안에서는 끝낼 수 없다. 2단계에서는 컬럼과 응답 필드만 만들고 인기 제품 몇 개는 SQL로 넣는다. 그러면 프론트가 아이콘과 이미지를 바로 나눠 보여줄 수 있다. 등록·수정 API는 4단계 관리자에 붙인다. 방법 자체(제형 아이콘 기본, URL만 저장)는 PLANNING.md "제품 이미지"(2026-11-06) 그대로다.

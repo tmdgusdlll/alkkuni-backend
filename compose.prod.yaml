@@ -1,5 +1,5 @@
 # 운영(EC2 한 대): nginx + api + db, batch는 필요할 때 한 번 실행.
-# 값은 EC2의 .env에서 읽는다: DB_NAME, DB_USERNAME, DB_PASSWORD, FOODSAFETY_API_KEY, IMAGE_REGISTRY, API_TAG, BATCH_TAG
+# 값은 EC2의 .env에서 읽는다: DB_NAME, DB_USERNAME, DB_PASSWORD, FOODSAFETY_API_KEY, IMAGE_REGISTRY, RAW_STORE_BUCKET, API_TAG, BATCH_TAG
 # .env는 deploy/deploy.sh가 배포 때마다 Parameter Store(/alkkuni/prod)에서 다시 만들고, 태그는 배포한 커밋 sha로 둔다.
 #
 # 배포:     deploy/deploy.sh <sha> (ci-cd.yml이 SSM으로 부른다). pull 후 up -d --no-deps --wait api, down은 쓰지 않는다
@@ -57,10 +57,9 @@ services:
     environment:
       <<: *app-env
       FOODSAFETY_API_KEY: ${FOODSAFETY_API_KEY:?}
-      # ponytail: 운영 원본은 S3에 둬야 한다(REVIEW.md). S3 RawStore 전까지 호스트 볼륨에 남긴다.
-      RAW_STORE_DIR: /app/data/raw
-    volumes:
-      - raw-data:/app/data/raw
+      # 원본은 S3에 바로 올린다(S3RawStore). 자격 증명은 EC2 인스턴스 역할(alkkuni-ec2)이다.
+      RAW_STORE_TYPE: s3
+      RAW_STORE_BUCKET: ${RAW_STORE_BUCKET:?}
     stop_grace_period: 30s
     mem_limit: 640m
     logging: *logging
@@ -85,4 +84,3 @@ services:
 
 volumes:
   db-data:
-  raw-data:

@@ -2,7 +2,7 @@ package com.alkkuni.batch.recall
 
 import com.alkkuni.batch.foodsafety.FoodSafetyClient
 import com.alkkuni.batch.noLock
-import com.alkkuni.batch.raw.RawStore
+import com.alkkuni.batch.raw.LocalRawStore
 import com.alkkuni.core.recall.entity.Recall
 import com.alkkuni.core.recall.enums.RecallListStatus
 import com.alkkuni.core.recall.repository.RecallRepository
@@ -35,7 +35,7 @@ class RecallCollectJobTest {
     private val client = FoodSafetyClient(builder, JsonMapper.builder().build(), "k")
     private val repository = mock(RecallRepository::class.java)
     private val job = RecallCollectJob(
-        client, RawStore(Files.createTempDirectory("raw")), RecallSnapshotApplier(repository), noLock(), clock,
+        client, LocalRawStore(Files.createTempDirectory("raw")), RecallSnapshotApplier(repository), noLock(), clock,
     )
 
     private fun recall(seq: String, status: RecallListStatus = RecallListStatus.LISTED) =
