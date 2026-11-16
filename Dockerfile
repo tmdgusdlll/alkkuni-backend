@@ -4,8 +4,8 @@
 FROM eclipse-temurin:21-jre-alpine
 ARG MODULE
 WORKDIR /app
-# data/raw: batch 원본 저장 볼륨의 마운트 지점. 이미지에 app 소유로 만들어 둬야 새 볼륨도 app이 쓸 수 있다.
-RUN addgroup -S app && adduser -S app -G app && mkdir -p /app/data/raw && chown -R app:app /app
+# 운영 batch 원본은 S3에 바로 올린다(S3RawStore). 로컬 파일 저장(LocalRawStore)을 이미지로 돌려도 /app이 app 소유라 쓸 수 있다.
+RUN addgroup -S app && adduser -S app -G app && chown -R app:app /app
 COPY --chown=app:app ${MODULE}/build/libs/${MODULE}.jar app.jar
 USER app
 EXPOSE 8080

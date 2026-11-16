@@ -4,7 +4,7 @@ import com.alkkuni.batch.brand.BrandDictionary
 import com.alkkuni.batch.ingredient.IngredientDictionary
 import com.alkkuni.batch.foodsafety.FoodSafetyClient
 import com.alkkuni.batch.noLock
-import com.alkkuni.batch.raw.RawStore
+import com.alkkuni.batch.raw.LocalRawStore
 import com.alkkuni.core.ingestion.entity.IngestionCursor
 import com.alkkuni.core.ingestion.repository.IngestionCursorRepository
 import com.alkkuni.core.product.repository.ProductIngredientRepository
@@ -53,7 +53,7 @@ class IncrementalCollectJobTest {
     }
     private val cursorRepository = mock(IngestionCursorRepository::class.java)
     private val job = IncrementalCollectJob(
-        client, RawStore(Files.createTempDirectory("raw")), upserter, cursorRepository, noLock(), clock,
+        client, LocalRawStore(Files.createTempDirectory("raw")), upserter, cursorRepository, noLock(), clock,
     )
 
     private fun givenCursor(date: LocalDate?): IngestionCursor? {

@@ -21,5 +21,9 @@ foodsafety:
 
 alkkuni:
   raw-store:
+    # 받은 응답 원본을 어디에 둘지. local(기본) / s3(운영, compose.prod.yaml이 넘긴다)
+    type: ${RAW_STORE_TYPE:local}
+    # type=s3일 때만 쓴다. 운영 값은 Parameter Store(/alkkuni/prod/RAW_STORE_BUCKET)
+    bucket: ${RAW_STORE_BUCKET:}
     # 받은 응답 원본을 저장하는 디렉터리. bootRun은 레포 루트에서 돌아 루트의 data/raw가 된다.
     dir: ${RAW_STORE_DIR:data/raw}

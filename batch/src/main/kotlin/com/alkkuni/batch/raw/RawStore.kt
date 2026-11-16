@@ -1,27 +1,19 @@
 package com.alkkuni.batch.raw
 
-import org.springframework.beans.factory.annotation.Value
-import org.springframework.stereotype.Component
-import java.nio.file.Files
-import java.nio.file.Path
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
 /**
- * 받은 응답 본문을 가공하지 않고 그대로 저장한다. DB는 이 원본으로 다시 만들 수 있어야 한다.
- * 경로: {dir}/{service}/{수집 시각}/{name}
+ * 받은 응답 본문을 가공하지 않고 그대로 저장한다. DB는 이 원본으로 다시 만들 수 있어야 한다(ADR-002).
+ * 저장에 실패하면 예외를 던진다. 원본 없이 적재를 이어가지 않는다.
+ * 구현은 `alkkuni.raw-store.type`으로 고른다: local(기본, 개발·테스트) / s3(운영).
  */
-// ponytail: 로컬 파일 시스템만 지원. 운영 배포(3주차) 때 S3 저장을 붙인다.
-@Component
-class RawStore(@Value("\${alkkuni.raw-store.dir}") private val dir: Path) {
-
-    fun save(service: String, collectedAt: LocalDateTime, name: String, body: String): Path {
-        val target = dir.resolve(service).resolve(collectedAt.format(FOLDER)).resolve(name)
-        Files.createDirectories(target.parent)
-        return Files.writeString(target, body)
-    }
-
-    companion object {
-        private val FOLDER = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss")
-    }
+interface RawStore {
+    fun save(service: String, collectedAt: LocalDateTime, name: String, body: String)
 }
+
+private val FOLDER = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss")
+
+/** 두 구현이 같은 모양으로 저장하게 하는 상대 경로: {service}/{수집 시각}/{name} */
+internal fun rawPath(service: String, collectedAt: LocalDateTime, name: String) =
+    "$service/${collectedAt.format(FOLDER)}/$name"
