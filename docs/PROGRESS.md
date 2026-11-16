@@ -23,7 +23,7 @@
   - [x] 성분 사전: 동의어·성분명 정리, `ingredient_id` 연결, IU 성분별 환산 (PR #18)
   - [x] 화면·필터·정렬 결정을 PLANNING.md "검색·목록·비교 화면"에 기록 (PR #19에 포함)
   - [ ] ‖ 배포 준비(직접): ~~도메인 확보~~(`kuromi.click`), ~~SES 프로덕션 액세스 요청~~(2026-11-08 승인), 개인정보처리방침·약관 초안 (`docs/guide/deploy-prep.md`, 로컬 전용)
-  - [ ] ‖ 기본 배포: Dockerfile, 운영 compose, `deploy.yml`, EC2에서 `/actuator/health` UP, 메모리 실측
+  - [ ] ‖ 기본 배포: Dockerfile, 운영 compose, `ci-cd.yml` 배포 job, EC2에서 `/actuator/health` UP, 메모리 실측
 - [ ] **2단계: 공개 API** ‖ 배포 계속(CloudFront, 도메인 연결)
   - [x] `ApiResponse`·`@RestControllerAdvice` (PR #17)
   - [x] 수집 칼럼 추가(제형, 신고일, 기능성 원료, 기능성 원문, 주의사항) + 재적재 (PR #19)
@@ -89,20 +89,24 @@
    - 인증 PR에서: CloudFront → Nginx → API를 거치면 Spring이 리다이렉트 URI를 http나 EC2 주소로 만들 수 있다. `forward-headers-strategy` 또는 운영 `redirect-uri` 고정
 5. 기본 배포(1단계 병렬 레인): ECR 푸시 → EC2. 처음엔 3주차 CloudFront 때로 미뤘지만, 웹훅·SES 도메인·메모리 실측이 모두 배포를 기다려 앞당김
    - [x] Dockerfile·운영 compose·Nginx(`chore/dockerfile`, 2026-11-13). 정한 것: CI가 `bootJar`로 만든 jar를 복사하는 Dockerfile 하나(`ARG MODULE`, jar 이름 `api.jar`·`batch.jar` 고정), 프로필·메모리·헬스 체크는 `compose.prod.yaml`
-   - 다음: AWS 준비(직접: ECR 2개, OIDC IAM 역할, EC2·swap·Docker·SSM, Parameter Store) → `deploy.yml` → S3 `RawStore`(별도 PR) → 운영 첫 실행(초기 적재 → `link-ingredients` → `link-brands` → `mark-export` → `link-categories`)과 메모리 실측
-   - 정할 것: OIDC IAM 역할 범위(제안: 이 레포 `main`만, ECR 푸시 + 해당 인스턴스 SSM `SendCommand`만)
+   - 다음: AWS 준비(직접: ECR 2개, OIDC IAM 역할, EC2·swap·Docker·SSM, Parameter Store) → `ci-cd.yml` 배포 job 첫 실행 → S3 `RawStore`(별도 PR) → 운영 첫 실행(초기 적재 → `link-ingredients` → `link-brands` → `mark-export` → `link-categories`)과 메모리 실측
+   - 정함(2026-11-13): OIDC IAM 역할(`alkkuni-deploy`) 범위는 이 레포 `main`만(`sub` 정확히 일치, PR·포크는 못 받음), ECR 2개 푸시 + 해당 인스턴스 하나에 `AWS-RunShellScript` `SendCommand`와 그 결과 조회(`GetCommandInvocation`)만. 공개 레포라 포크 PR의 워크플로가 AWS를 만지지 못하게 하고, 액션이 털려도 피해가 서버 한 대 안에서 끝나게 한다. 배포 job에 `environment:`를 쓰면 `sub`가 바뀌므로 신뢰 정책도 같이 고친다
    - 정함(2026-11-07): t4g.small로 시작, 탄력적 IP 연결, swap 1~2GB. 메모리 실측 뒤 부족하면 medium(PLANNING.md "배포")
    - 검증: EC2에서 `/actuator/health` UP
    - 확인: 운영 compose(또는 Dockerfile)에 `SPRING_PROFILES_ACTIVE=prod` 지정. 공통 yaml의 기본 프로필이 `local`이라 빠지면 `localhost` DB로 접속을 시도한다
    - 확인: 운영 DB 비밀번호는 새로 생성해 Parameter Store에 둔다. `.env.example` 값은 로컬 전용 예시
-   - 워크플로: `ci.yml`과 분리한 `deploy.yml`(main 푸시). `id-token: write`는 배포 job에만
+   - [x] 워크플로·배포 스크립트(`chore/ci-cd`, 2026-11-15). AWS 리소스가 없어 배포 job은 아직 돌려 보지 못했다. 첫 main 푸시가 첫 실행
+   - 정함(2026-11-15): `ci.yml`을 `ci-cd.yml` 하나로 합친다. `deploy` job이 `needs: build`로 테스트 통과를 기다리고, `id-token: write`는 이 job에만 준다
+   - 정함(2026-11-15): EC2 파일은 배포한 커밋 sha의 raw GitHub에서 받는다(`deploy.sh`가 compose·Nginx 설정·`run-job.sh`를 내려받음). `.env`는 배포 때마다 Parameter Store에서 다시 만들고 `API_TAG`·`BATCH_TAG`는 그 sha. 실패 시 직전 배포 파일(`.prev`)로 자동 롤백, 더 이전은 그 sha로 `deploy.sh`를 다시 실행
    - 이미지: t4g(ARM)라 `linux/arm64`로 빌드. QEMU보다 `ubuntu-24.04-arm` 러너 네이티브 빌드 우선 검토
    - 태그: `latest`와 `github.sha`를 함께 붙여 롤백할 이미지를 남긴다. 레이어 캐시는 `cache-from/to: type=gha`
    - 배포 job은 `concurrency`의 `cancel-in-progress: false`(중간에 끊기면 서버가 어중간한 상태로 남음)
    - 배포 후 `/actuator/health` UP 확인 단계로 끝낸다
    - 검증 추가: batch 실행 중 `docker stats` 피크와 swap 사용량 기록 → 미해결 질문 "2GB로 컨테이너 4개" 답
+   - 검증 추가: api 교체 중 끊기는 시간(기존 컨테이너 종료 → 새 컨테이너 헬스 UP)과 api 2개를 동시에 띄웠을 때 메모리 → 미해결 질문 "무중단 배포" 답
    - 기동 순서: api(Flyway) → 헬스 UP → batch. batch는 Flyway 없이 `ddl-auto=validate`만 하므로 새 마이그레이션이 적용되기 전에 뜨면 기동에 실패한다
-   - jar 전달: `deploy.yml`이 `./gradlew :api:bootJar :batch:bootJar` 뒤 `docker build --build-arg MODULE=…`. `.dockerignore`가 두 jar만 컨텍스트에 보낸다
+   - jar 전달: `build` job의 `./gradlew build`가 만든 두 jar를 artifact로 넘기고 `deploy` job이 `docker build --build-arg MODULE=…`. `.dockerignore`가 두 jar만 컨텍스트에 보낸다
+   - 첫 실행에서 할 것: jar 레이어 분리 전후 ECR push 크기 측정(PR #36에서 미룸), `/actuator/health` UP, api 교체 끊김 시간(`deploy.sh`가 healthy까지 걸린 초를 출력)
 6. 1일 기준값 나머지(2026-11-09 계획)
    - 상한을 넣지 않은 기능성 원료: 프로바이오틱스 수·폴리감마글루탐산(개별인정형이 고시 최고량을 정상으로 넘음), 실리마린·포스파티딜세린·크레아틴(고시가 고정량), 식이섬유(원료마다 최고량이 다름). 개별인정형 원료 최고량을 따로 수집하게 되면 다시 본다
    - 기준값 보류 성분: 조단백질(대두단백 외 원료도 같은 이름), 총 플라보노이드(프로폴리스, 충족 41%·중앙값 17mg이라 용도별 하한 확인 필요), 로사빈·소포리코사이드(고시 값이 추출물 양). `docs/daily-reference.csv`의 `note`에 이유
@@ -146,6 +150,7 @@
 ## 미해결 질문
 
 - [ ] 2GB 메모리로 컨테이너 4개 운영이 가능한가 (구현 초기 실측)
+- [ ] 무중단 배포를 할지 (2026-11-13 제기, 5단계 공개 배포 전에 정함). 지금 방식(`up -d --no-deps api`)은 새 api가 기동하는 동안 Nginx가 502를 낸다. 공개 전이라 짧은 중단은 받아들인다. 판단 근거는 기본 배포에서 잴 끊김 시간과 api 2개 동시 기동 메모리(640m×2, t4g.small 2GB). 하게 되면 서비스를 2개로 늘려 새 것이 healthy가 되면 기존 것을 내리는 방식(`docker-rollout` 등)이 변경이 가장 작다. api에 `container_name`·`ports`가 없고 Nginx가 Docker DNS를 10초마다 다시 조회해서 구조는 맞는다(기존 컨테이너를 내린 직후 10초 동안 옛 IP로 가는지는 확인 필요). 이때부터 마이그레이션은 옛 버전과 함께 돌아도 깨지지 않게 추가 → 다음 배포에서 삭제로 나눈다
 - [ ] 소셜 계정 연결 정책 (같은 이메일 자동 병합 여부, MVP는 병합 안 함)
 - [ ] 인앱 브라우저 소셜 로그인 대응 방식
 - [ ] LLM 정규화의 사용 범위와 월 비용 상한
@@ -167,6 +172,18 @@
   - Grafana는 Tailscale로만 접속해 앱 EC2와 같은 "인바운드 0개" 원칙을 지킨다. 아이패드는 Grafana kiosk 현황판 + 관리자 웹.
   - 관리자 웹은 Next.js `/admin`(PLANNING.md "별도 관리자 서버 없음"과 같은 방향). 보기는 Grafana, 조작은 관리자 웹으로 나눈다.
 - 메인 통계·소식 API를 계획에 추가(PLANNING.md "메인 통계·소식 API"). 프론트 PROGRESS의 "백엔드에 걸린 것"에 있었는데 백엔드 계획에 빠져 있었다. 2단계 남은 작업과 함께 한다. 소식의 날짜는 `recall`에 원본 등록일이 없어(`first_seen_at`만 있음) 구현 PR에서 정한다.
+
+### 2026-11-15
+- CI/CD 워크플로와 배포 스크립트(`chore/ci-cd`, PR #37)
+  - `ci.yml`과 따로 두려던 `deploy.yml`을 `ci-cd.yml` 하나로 합쳤다(11-13 "분리" 결정을 뒤집음). 파일을 나누면 배포가 CI 완료를 `needs`로 기다릴 수 없어 `workflow_run`이 필요하고 흐름이 두 파일로 갈린다. 권한은 job별 `permissions`로 배포 job에만 `id-token: write`, 포크 PR은 `if`(main 푸시만)와 IAM 신뢰 정책 `sub`가 막는다. 필수 체크 이름은 job 이름(`build`)이라 바뀌지 않는다.
+  - 워크플로 전체 `cancel-in-progress`는 PR일 때만 켠다. main에서 켜면 연속 푸시 때 배포 중인 실행이 취소된다. main 실행은 같은 그룹이라 한 번에 하나씩 돌아 배포가 겹치지 않는다. 배포 job에 따로 그룹을 두지 않는다(리뷰 반영, 중복).
+  - 배포 job은 `ubuntu-24.04-arm`에서 arm64 이미지를 네이티브로 빌드, `provenance: false`(증명 매니페스트도 ECR 수명 주기 10개에 세어짐), 태그 sha·latest. SSM `send-command`로 이 커밋의 `deploy/deploy.sh`를 실행하고 결과를 5초 간격으로 최대 10분 기다린다(`aws ssm wait`는 약 100초로 짧다).
+  - `deploy/deploy.sh`: 새 파일(compose·Nginx 설정·`run-job.sh`·`.env`)을 `.next/`에 받고 ECR pull까지 성공해야 교체한다. 교체 전 파일은 `.prev/`. 이후 `up -d --wait db nginx` → `up -d --no-deps --wait api`(180초) → Nginx reload → Nginx를 거친 `/actuator/health` 중 하나라도 실패하면 `.prev/`로 되돌려 다시 띄우고 실패로 끝난다(REVIEW.md "헬스 체크 실패 시 롤백"). 이미지 태그가 `.env`에 있어 파일 묶음을 되돌리면 이미지도 되돌아간다. 적용된 마이그레이션은 남고, 첫 배포는 되돌릴 것이 없어 실패만 한다. 가짜 docker·aws·curl로 성공·api 실패 롤백·pull 실패(무변경)·Nginx 실패 롤백·롤백 실패·작은따옴표 값 거부·첫 배포 실패 7가지를 확인.
+  - `deploy/run-job.sh`: api healthy를 2분까지 확인한 뒤 `run --rm --no-deps batch`. PR #36에서 batch `depends_on: api`를 빼서 순서 확인을 여기로 모았다. cron 등록은 운영 첫 실행 때.
+  - 확인: actionlint·shellcheck 통과, `compose.prod.yaml config` 통과. 배포 job은 AWS 리소스가 없어 실행하지 못했다.
+  - `/code-review` 반영: 자동 롤백(위), ERR trap이 함수 안 실패에도 걸리게 `set -E`(시뮬레이션에서 롤백이 안 돈 원인), db를 healthy까지 기다림(api를 `--no-deps`로 띄워 첫 배포에 initdb 전 접속 실패), SSM 래퍼 `set -eu`(Ubuntu `/bin/sh`는 dash라 `pipefail`이 없어 첫 줄에서 실패), `.env` 값 작은따옴표 감싸기(compose가 `$`·` #`를 해석해 비밀번호가 조용히 잘림), 결과 폴링은 `InvocationDoesNotExist`만 대기로 보고 다른 오류는 바로 실패. 의도됨: 레포 경로를 `deploy.sh`에 둠(직접 롤백 실행 때 인자 하나로 끝나게), DB 비밀번호 변경은 `ALTER USER` 먼저(주석).
+  - `/security-review`: 신뢰도 8 이상 없음. 보고 기준 아래(5)였던 "롤백 때 api 로그가 공개 Actions 로그로 나감"을 반영: 컨테이너 로그는 EC2 `/opt/alkkuni/logs/deploy-<sha>.log`(600)에만 쓰고 SSM 출력에는 경로만 남긴다. 공개 레포라 Actions 로그는 누구나 보고, 앱 로그에 나중에 개인정보가 섞이면 배포 실패 때 새어 나간다.
+  - 역할 ARN·인스턴스 ID를 `vars`에서 `secrets`로 옮김(2026-11-16). 공개 레포라 Actions 로그를 누구나 보는데, `vars` 값은 스텝 헤더(`with:`·`env:`)에 그대로 찍혀 계정 ID와 인스턴스 ID가 공개된다. 자격 증명은 아니지만(신뢰 정책 `sub`가 main 고정) 역할 이름 추측 같은 정찰 재료라 가린다. 대가는 로그에서 값이 `***`로 보이는 것.
 
 ### 2026-11-13
 - Dockerfile·운영 compose·Nginx(`chore/dockerfile`, PR #36). 기본 배포의 첫 단위다.
