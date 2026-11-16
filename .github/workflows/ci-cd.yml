@@ -58,7 +58,7 @@ jobs:
       # AWS 자격 증명을 다루는 서드파티 액션은 커밋 SHA로 고정한다(태그는 옮겨질 수 있다). 올릴 때 SHA와 주석을 같이 바꾼다.
       - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
       - id: ecr
         uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2.1.7
@@ -91,7 +91,7 @@ jobs:
       # EC2에서 이 커밋의 deploy.sh를 받아 실행한다(SSH 없이 SSM 에이전트가 실행). 헬스 체크까지 EC2 안에서 한다.
       - name: EC2에 배포
         env:
-          INSTANCE_ID: ${{ vars.EC2_INSTANCE_ID }}
+          INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
           RAW_BASE: https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}
           SHA: ${{ github.sha }}
         run: |

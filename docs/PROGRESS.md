@@ -168,6 +168,7 @@
   - 확인: actionlint·shellcheck 통과, `compose.prod.yaml config` 통과. 배포 job은 AWS 리소스가 없어 실행하지 못했다.
   - `/code-review` 반영: 자동 롤백(위), ERR trap이 함수 안 실패에도 걸리게 `set -E`(시뮬레이션에서 롤백이 안 돈 원인), db를 healthy까지 기다림(api를 `--no-deps`로 띄워 첫 배포에 initdb 전 접속 실패), SSM 래퍼 `set -eu`(Ubuntu `/bin/sh`는 dash라 `pipefail`이 없어 첫 줄에서 실패), `.env` 값 작은따옴표 감싸기(compose가 `$`·` #`를 해석해 비밀번호가 조용히 잘림), 결과 폴링은 `InvocationDoesNotExist`만 대기로 보고 다른 오류는 바로 실패. 의도됨: 레포 경로를 `deploy.sh`에 둠(직접 롤백 실행 때 인자 하나로 끝나게), DB 비밀번호 변경은 `ALTER USER` 먼저(주석).
   - `/security-review`: 신뢰도 8 이상 없음. 보고 기준 아래(5)였던 "롤백 때 api 로그가 공개 Actions 로그로 나감"을 반영: 컨테이너 로그는 EC2 `/opt/alkkuni/logs/deploy-<sha>.log`(600)에만 쓰고 SSM 출력에는 경로만 남긴다. 공개 레포라 Actions 로그는 누구나 보고, 앱 로그에 나중에 개인정보가 섞이면 배포 실패 때 새어 나간다.
+  - 역할 ARN·인스턴스 ID를 `vars`에서 `secrets`로 옮김(2026-11-16). 공개 레포라 Actions 로그를 누구나 보는데, `vars` 값은 스텝 헤더(`with:`·`env:`)에 그대로 찍혀 계정 ID와 인스턴스 ID가 공개된다. 자격 증명은 아니지만(신뢰 정책 `sub`가 main 고정) 역할 이름 추측 같은 정찰 재료라 가린다. 대가는 로그에서 값이 `***`로 보이는 것.
 
 ### 2026-11-13
 - Dockerfile·운영 compose·Nginx(`chore/dockerfile`, PR #36). 기본 배포의 첫 단위다.
