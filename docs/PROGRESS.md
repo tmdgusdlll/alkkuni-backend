@@ -90,6 +90,7 @@
 5. 기본 배포(1단계 병렬 레인): ECR 푸시 → EC2. 처음엔 3주차 CloudFront 때로 미뤘지만, 웹훅·SES 도메인·메모리 실측이 모두 배포를 기다려 앞당김
    - [x] Dockerfile·운영 compose·Nginx(`chore/dockerfile`, 2026-11-13). 정한 것: CI가 `bootJar`로 만든 jar를 복사하는 Dockerfile 하나(`ARG MODULE`, jar 이름 `api.jar`·`batch.jar` 고정), 프로필·메모리·헬스 체크는 `compose.prod.yaml`
    - [x] AWS 준비, `ci-cd.yml` 첫 배포(PR #37)·두 번째 배포(PR #38, `.prev/` 확인) (2026-11-16)
+   - [x] `ANALYZE product` 단축(V16, PR #40, 2026-11-17). 배포 마무리 PR에서 운영 `ANALYZE product` 시간(적용 전 약 11분)을 재서 적는다
    - 다음: S3 `RawStore`(`feat/s3-raw-store`) → 운영 첫 실행(초기 적재 → `link-ingredients` → `link-brands` → `mark-export` → `link-categories`)과 메모리 실측
    - 정함(2026-11-13): OIDC IAM 역할(`alkkuni-deploy`) 범위는 이 레포 `main`만(`sub` 정확히 일치, PR·포크는 못 받음), ECR 2개 푸시 + 해당 인스턴스 하나에 `AWS-RunShellScript` `SendCommand`와 그 결과 조회(`GetCommandInvocation`)만. 공개 레포라 포크 PR의 워크플로가 AWS를 만지지 못하게 하고, 액션이 털려도 피해가 서버 한 대 안에서 끝나게 한다. 배포 job에 `environment:`를 쓰면 `sub`가 바뀌므로 신뢰 정책도 같이 고친다
    - 정함(2026-11-07): t4g.small로 시작, 탄력적 IP 연결, swap 1~2GB. 메모리 실측 뒤 부족하면 medium(PLANNING.md "배포")
@@ -161,6 +162,13 @@
 - [ ] 상표(KIPRIS) 확인 (도메인은 `kuromi.click`으로 확보, 2026-11-06)
 
 ## 작업 로그
+
+### 2026-11-17 (ANALYZE product 느림, PR #40)
+- 운영 첫 적재 뒤 수동 `ANALYZE product`가 약 11분 걸렸다(4.6만 행, 16만 행인 `product_ingredient`는 금방 끝남). 로컬도 5분 30초로 재현됐다. 2026-11-07에 "원인 미확인"으로 취소했던 것과 같은 현상이다.
+- 원인: DB collation이 libc `en_US.utf8`이고, glibc `strcoll`은 한글 문자열에서 길이의 제곱에 비례해 느려진다(길이 2배 → 시간 4배, 545자 비교 1회 16ms, ASCII는 선형). 통계를 만들 때 표본 값을 정렬하는데, 열별로 재 보니 `precautions` 264초, `functionality` 39초, `standard_text` 3초였다. `precautions`는 앞부분이 같은 긴 값이 많아 비교가 특히 비싸다. 같은 데이터를 `C` collation으로 정렬하면 0.13초.
+- 해결: V16에서 두 열을 `SET STATISTICS 0`으로 ANALYZE 대상에서 뺐다. 두 열은 화면 표시와 Kotlin 카테고리 판정에만 쓰고 SQL 조건·정렬에는 쓰지 않아 플래너 통계가 필요 없다. 로컬 `ANALYZE product` 5분 30초 → 14.9초. DB collation을 `C`로 바꾸는 방법은 DB를 다시 만들어야(덤프·복원) 해서 고르지 않았다. 나중에 이 열을 조건·정렬에 쓰게 되면 `SET STATISTICS -1`로 되돌린다.
+- 운영 측정(배포 뒤 `ANALYZE product` 시간)은 배포 마무리 PR에서 적는다. 유휴 검색 지연(280~386ms)은 이 문제와 별개로 따로 조사한다.
+- 제품 이미지 마이그레이션은 V17로 밀렸다.
 
 ### 2026-11-16 (S3 RawStore, 첫 배포)
 - 첫 배포(PR #37) 성공, `api healthy: 31초`. 처음엔 OIDC 신뢰 정책의 `sub`가 맞지 않아 `AssumeRoleWithWebIdentity`에서 거절됐다. 이 레포는 GitHub immutable subject가 켜져 있어 `sub`가 `repo:<owner>@<ownerID>/<repo>@<repoID>:ref:...` 형식이다. 신뢰 정책을 이 값으로 고쳤다(`StringEquals` 유지). 두 번째 배포(PR #38)도 31초, `.prev/` 백업 확인.
