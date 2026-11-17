@@ -23,7 +23,7 @@
   - [x] 성분 사전: 동의어·성분명 정리, `ingredient_id` 연결, IU 성분별 환산 (PR #18)
   - [x] 화면·필터·정렬 결정을 PLANNING.md "검색·목록·비교 화면"에 기록 (PR #19에 포함)
   - [ ] ‖ 배포 준비(직접): ~~도메인 확보~~(`kuromi.click`), ~~SES 프로덕션 액세스 요청~~(2026-11-08 승인), 개인정보처리방침·약관 초안 (`docs/guide/deploy-prep.md`, 로컬 전용)
-  - [x] ‖ 기본 배포: Dockerfile, 운영 compose, `ci-cd.yml` 배포 job, EC2에서 `/actuator/health` UP, 메모리 실측 (PR #37~#41, 2026-11-18)
+  - [x] ‖ 기본 배포: Dockerfile, 운영 compose, `ci-cd.yml` 배포 job, EC2에서 `/actuator/health` UP, 메모리 실측 (PR #37~#42, 2026-11-18)
 - [ ] **2단계: 공개 API** ‖ 배포 계속(CloudFront, 도메인 연결)
   - [x] `ApiResponse`·`@RestControllerAdvice` (PR #17)
   - [x] 수집 칼럼 추가(제형, 신고일, 기능성 원료, 기능성 원문, 주의사항) + 재적재 (PR #19)
@@ -36,6 +36,7 @@
   - [ ] ~~메인 인기 성분 비교(고정 목록)~~(백엔드 작업 없음: 프론트가 기존 성분별 목록 API로 고정 6개를 띄움, 2026-11-12 PLANNING.md "메인 인기 성분"), 제품 이미지 1차(V17 `product.image_url` 컬럼·응답 `imageUrl`, NULL이면 프론트가 제형 아이콘, 인기 제품 몇 개만 SQL로 넣음. 등록·수정 API는 4단계 관리자로 미룸, 2026-11-16), 구매 링크 1차(ADR-008. `ShoppingLink` 테이블·응답 링크·대가성 문구, 인기 제품 링크만 SQL로 넣음. 등록·수정 API는 4단계 관리자로 미룸, 2026-11-16). PLANNING.md MVP 표에 있는데 작업 순서에서 빠져 있었다(2026-11-07)
   - [ ] 메인 통계 API(`GET /api/stats`: 제품 수·기준일)와 소식 목록 API(`GET /api/news`: 회수부터). 프론트 메인이 기다리는 것. PLANNING.md "메인 통계·소식 API"
   - [ ] 인기 순위(MVP 이후, 순서 미정): 날짜별 조회 카운트·`GET /api/home/popular`(조회 시 7일 집계 + CloudFront 60초 캐시, 배치 없음)·k6로 카운트 성능 측정 → 결과로 DB 유지·Redis 도입 결정. PLANNING.md "메인 인기 성분" 2·3
+  - [ ] ‖ batch 실행 기록(`job_run`): 작업마다 시작·끝·성공 여부·처리 건수·오류를 한 줄씩 남긴다. 계측·알림(아래)의 데이터 출처. 다음 할 일 5번
   - [ ] ‖ 계측(기본 배포 메모리 실측 뒤): Micrometer Prometheus·JSON 구조화 로그, 모니터링 EC2(Grafana·Prometheus·Loki, Tailscale 접속), 서비스·서버 대시보드. PLANNING.md "모니터링·알림"
 - [ ] **3단계: 인증 + 서랍** ‖ 회수 매칭(batch)
   - 소셜 로그인(웹훅 포함, 세션 + `spring-session-jdbc`), `Member.role`·감사 로그 → 서랍, 마이페이지
@@ -90,15 +91,24 @@
    - 인증 PR에서: CloudFront → Nginx → API를 거치면 Spring이 리다이렉트 URI를 http나 EC2 주소로 만들 수 있다. `forward-headers-strategy` 또는 운영 `redirect-uri` 고정
 5. 기본 배포 뒤 남은 것(2026-11-18). 기본 배포는 "완료"로 옮겼다
    - 매일 수집 cron(`incremental` UTC 19:00, `recall` 19:30)은 EC2 root crontab에 직접 등록한다(`docs/guide/aws-setup.md` 10단계, 로컬 전용). 검증: 등록 다음 날 아침 `logs/cron-*.log`와 `ingestion_cursor`가 어제 날짜로 옮겨졌는지
+     - 등록할 두 줄(가이드가 로컬 전용이라 원문을 여기에도 남긴다):
+       `0 19 * * * bash /opt/alkkuni/deploy/run-job.sh incremental >> /opt/alkkuni/logs/cron-incremental.log 2>&1`
+       `30 19 * * * bash /opt/alkkuni/deploy/run-job.sh recall >> /opt/alkkuni/logs/cron-recall.log 2>&1`
+   - batch CPU 제한(`cpus:`)은 보류(PR #42 리뷰). 적재 중 검색 타임아웃은 batch와 db가 함께 바빠서였고, batch만 막아도 batch가 db에 시키는 쿼리 부하는 그대로라 효과가 불확실하다. 매일 증분은 몇 분짜리다. 낮에 큰 작업을 돌리게 되면(4단계 관리자 수동 실행) `cpus` 제한 전후 검색 시간을 재서 정한다
    - jar 레이어 분리 전후 ECR push 크기 측정(PR #36에서 미룸)
    - 쓰지 않는 기본 VPC(172.31) 삭제(콘솔)
+   - batch 실행 기록(`job_run`, 2026-11-18 정함). 지금은 배치가 성공했는지 다음 날 로그·`ingestion_cursor`를 직접 봐야 알고, 회수 수집·처리 건수·실패는 DB에 남지 않는다. 실행마다 (작업명, 시작·끝 시각, 성공·실패, 처리·신규·변경 건수, 오류 메시지) 한 줄을 남긴다
+     - 알림은 batch가 직접 보내지 않고 Grafana가 이 테이블의 "작업별 마지막 성공 시각"을 보고 건다(PLANNING.md "모니터링·알림" 3). batch가 보내면 cron이 빠지거나 서버가 죽어 아예 안 돈 경우를 놓친다. "26시간째 성공 없음" 한 규칙이 실패·미실행·멈춤을 다 잡는다
+     - 정할 것: 4단계 `collect_request`(관리자 수동 실행 요청, PLANNING.md "관리자 운영 도구")와 한 테이블로 합칠지. 요청 행이 그대로 실행 이력이 되는 설계라 합치면 테이블이 하나다. 지금 만들 땐 cron 실행도 같은 행을 쓰게 열어 둔다
+     - 기록은 `JobLock`처럼 모든 작업이 지나는 한 곳에서 한다(작업마다 따로 넣지 않는다). 실패 기록이 예외에 묻히지 않게 별도 트랜잭션으로 쓴다
+     - 검증: 성공·실패(예외)·잠금 실패 각각 한 줄씩 남는 테스트, 운영 cron 다음 날 `SELECT * FROM job_run ORDER BY started_at DESC`
 6. 1일 기준값 나머지(2026-11-09 계획)
    - 상한을 넣지 않은 기능성 원료: 프로바이오틱스 수·폴리감마글루탐산(개별인정형이 고시 최고량을 정상으로 넘음), 실리마린·포스파티딜세린·크레아틴(고시가 고정량), 식이섬유(원료마다 최고량이 다름). 개별인정형 원료 최고량을 따로 수집하게 되면 다시 본다
    - 기준값 보류 성분: 조단백질(대두단백 외 원료도 같은 이름), 총 플라보노이드(프로폴리스, 충족 41%·중앙값 17mg이라 용도별 하한 확인 필요), 로사빈·소포리코사이드(고시 값이 추출물 양). `docs/daily-reference.csv`의 `note`에 이유
 
 ## 완료
 
-- [x] 기본 배포: Dockerfile·운영 compose·Nginx, `ci-cd.yml` 배포 job(OIDC, `main`만), `deploy.sh`(Parameter Store로 `.env`, healthy 확인, `.prev/` 자동 롤백), S3 `RawStore`, 운영 첫 적재 46,401건과 메모리 실측, `ANALYZE product` 단축(V16), api 연결 JIT 끔 (PR #37~#41, 2026-11-16~18). 측정값은 작업 로그 2026-11-18
+- [x] 기본 배포: Dockerfile·운영 compose·Nginx, `ci-cd.yml` 배포 job(OIDC, `main`만), `deploy.sh`(Parameter Store로 `.env`, healthy 확인, `.prev/` 자동 롤백), S3 `RawStore`, 운영 첫 적재 46,401건과 메모리 실측, `ANALYZE product` 단축(V16), api 연결 JIT 끔, 기본 배포 마무리 (PR #37~#42, 2026-11-16~18). 측정값은 작업 로그 2026-11-18
 - [x] 수출용 제품 판정(`ExportName`, V14 `export_only`, `alkkuni.job=mark-export`, 로컬 2,608개), 응답 `exportOnly`, 검색·성분별 목록 기본 정렬에서 국내 제품 뒤로와 `market` 필터, 브랜드 목록 국내·수출 수, 로컬 실제 데이터로 확인 (PR #33, 2026-11-13)
 - [x] 제품 응답(검색·목록·비교·상세)에 `brand`, 검색어가 브랜드 표기면 그 브랜드 제품을 더하고 `matchedBrand`, 성분별 목록 `brand=` 필터, 브랜드 목록 API(`GET /api/brands`, 제품 수 순), 로컬 실제 데이터로 호출·응답 시간 확인 (PR #32, 2026-11-12)
 - [x] 비교·목록·상세 응답 함량 행에 `referencePercent`·`meetsReference`·`exceedsUpperLimit`, 성분에 기준값(`referenceAmount`·`referenceUnit`), 기능성 원료 23개 상한(V12, I2710 고시 최고량), 로컬 실제 데이터로 세 API 호출 확인 (2026-11-09)
@@ -147,18 +157,18 @@
 
 ## 작업 로그
 
-### 2026-11-18 (기본 배포 마무리)
+### 2026-11-18 (기본 배포 마무리, PR #42)
 - 1단계 기본 배포를 끝냈다. 운영 측정값을 한곳에 모은다.
   - 배포 끊김(PR #39): Nginx 502 15~16초, `api healthy` 17초(#37·#38은 31초, 끊김은 안 잼)
   - 첫 적재(2026-11-16): 46,401건, S3 원본 47페이지, 후처리 4개, 회수 389건. 메모리 피크는 위 미해결 질문 "2GB". 적재 중 검색 타임아웃 2회는 CPU 경합(batch+db가 vCPU 2개 포화)
   - `ANALYZE product`(PR #40 배포 뒤): 약 11분 → 31.8초(`attstattarget` 0 확인)
   - 검색 "비타민C" EC2 안 curl(PR #41 배포 직후 새 커넥션 풀): 370~404ms → 260~317ms(중앙값 약 285ms). 줄어든 양이 운영 JIT 컴파일 시간(108~120ms)과 맞는다
-- `deploy.sh`가 Parameter Store 값의 앞뒤 공백을 거부한다. 콘솔에 붙여 넣다 버킷 이름 끝에 공백이 들어가 첫 적재가 S3 400으로 실패했다(2026-11-16). 작은따옴표 검사와 같은 자리이고, 거부하면 `pipefail`로 `.env`를 만들기 전에 배포가 멈춘다. 샘플 값(끝 공백, 앞 공백, 가운데 공백, 작은따옴표)으로 awk를 돌려 확인.
+- `deploy.sh`가 Parameter Store 값의 앞뒤 공백을 거부한다. 콘솔에 붙여 넣다 버킷 이름 끝에 공백이 들어가 첫 적재가 S3 400으로 실패했다(2026-11-16). 작은따옴표 검사와 같은 자리이고, 거부하면 `pipefail`로 `.env`를 만들기 전에 배포가 멈춘다. 처음엔 스페이스·탭만 봤다가 `/code-review` 뒤 넓혔다: 끝 CR·NBSP(콘솔 붙여 넣기에서 잘 들어감)는 그냥 통과했고, 탭·줄바꿈은 `--output text`에서 칸이 늘거나 줄이 갈라져 값이 잘리거나 빈 줄이 `.env`에 들어갔다. 지금은 칸 수(`NF != 2`)와 `[[:space:]]`·NBSP를 본다. 끝 공백·앞 공백·끝 CR·끝 줄바꿈·끝 NBSP·앞 탭·가운데 탭 거부, 가운데 공백(비밀번호에 쓰일 수 있음) 통과를 macOS awk와 Amazon Linux 2023 gawk에서 확인.
 - `compose.prod.yaml`의 `mem_limit` ponytail 주석을 실측 근거로 바꿨다. 값은 모두 한도 안이라 그대로다.
 - cron은 레포 파일 + 배포 설치 대신 EC2에 직접 등록한다. 지금은 두 줄이고 거의 바뀌지 않아 배포 스크립트를 키울 이유가 약하다. 서버를 다시 만들 때 빠지지 않게 `docs/guide/aws-setup.md`(로컬 전용) 10단계에 명령을 적었다. 4단계 관리자 수동 실행(1분 폴링)으로 줄이 늘고 스크립트와 함께 바뀌게 되면 그때 레포 파일로 옮긴다.
 
-### 2026-11-18 (인기 순위 배치 없앰)
-- 메인 인기 성분 순위를 하루 한 번 배치로 순위 테이블에 저장하던 계획을, `GET /api/home/popular`가 요청 때 최근 7일 카운트를 `GROUP BY`로 합치고 `max-age=60`으로 CloudFront에 맡기는 방식으로 바꿨다(PLANNING.md "메인 인기 성분" 2). 집계 대상이 7일 × 성분 수(많아야 약 1,500행)라 수 ms이고, 사용자 수와 상관없이 집계는 1분에 최대 한 번이다. 배치 작업·순위 테이블·cron 줄이 없어지고 순위 반영이 하루에서 최대 1분으로 빨라진다. 기간·단위를 넓혀 집계가 느려지면 그때 배치를 들인다.
+### 2026-11-18 (인기 순위 배치 없앰, PR #42)
+- 메인 인기 성분 순위를 하루 한 번 배치로 순위 테이블에 저장하던 계획을, `GET /api/home/popular`가 요청 때 최근 7일 카운트를 `GROUP BY`로 합치고 `max-age=60`으로 CloudFront에 맡기는 방식으로 바꿨다(PLANNING.md "메인 인기 성분" 2). 집계 대상이 7일 × 성분 수(많아야 약 1,500행)라 수 ms이고, 사용자 수와 상관없이 집계는 1분에 최대 한 번이다(CloudFront 캐시 정책에 이 경로가 있을 때). 배치 작업·순위 테이블·cron 줄이 없어지고 순위 반영이 하루에서 최대 약 2분(CloudFront 60초 + 브라우저 60초)으로 빨라진다. `/code-review`에서 응답 헤더를 `s-maxage` 방침에 맞추고, 프론트 서버 캐시(`"use cache"` 기본 15분)가 겹치면 더 늦어진다는 점을 PLANNING.md에 적었다. 기간·단위를 넓혀 집계가 느려지면 그때 배치를 들인다.
 - 같은 날 cron으로 남는 것을 정리했다. 매일 증분·회수 수집(직접 등록), DB 백업(공개 전), 관리자 수동 실행 요청 확인(4단계, 1분 폴링). 관리자 실행은 상주 워커(`@Scheduled`·`LISTEN/NOTIFY`)로 바꾸면 즉시 시작되지만 batch JVM이 항상 메모리를 차지해(t4g.small 2GB, 첫 적재 때 남은 메모리 최소 337MiB) cron 폴링을 유지한다(ADR-009).
 
 ### 2026-11-17 (유휴 검색 지연, PostgreSQL JIT 끔, PR #41)

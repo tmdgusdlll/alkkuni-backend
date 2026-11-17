@@ -28,7 +28,9 @@ aws ssm get-parameters-by-path --region "$REGION" --path /alkkuni/prod --with-de
   | awk -F '\t' -v q="'" '{
       sub(".*/", "", $1)
       if (index($2, q)) { print $1 " 값에 작은따옴표가 있다" > "/dev/stderr"; exit 1 }
-      if ($2 ~ /^[ \t]|[ \t]$/) { print $1 " 값 앞뒤에 공백이 있다" > "/dev/stderr"; exit 1 }
+      # 탭·줄바꿈이 든 값은 text 출력에서 칸이 늘거나 줄이 갈라져 NF가 2가 아니게 된다. NBSP(U+00A0)는 [[:space:]]에 안 잡혀 따로 본다.
+      if (NF != 2) { print NR "번째 줄: 값에 탭·줄바꿈이 있다" > "/dev/stderr"; exit 1 }
+      if ($2 ~ /^[[:space:]]|[[:space:]]$/ || index($2, "\302\240")) { print $1 " 값 앞뒤에 공백(줄바꿈·NBSP 포함)이 있다" > "/dev/stderr"; exit 1 }
       print $1 "=" q $2 q
     }' > .next/.env
 printf "API_TAG='%s'\nBATCH_TAG='%s'\n" "$SHA" "$SHA" >> .next/.env
