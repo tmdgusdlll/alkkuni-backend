@@ -2,6 +2,8 @@
 services:
   db:
     image: postgres:17
+    # JIT 끔: 운영과 같게 둔다. 이유는 compose.prod.yaml.
+    command: ["postgres", "-c", "jit=off"]
     environment:
       POSTGRES_DB: ${DB_NAME}
       POSTGRES_USER: ${DB_USERNAME}
