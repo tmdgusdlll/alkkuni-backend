@@ -30,6 +30,12 @@ class AlkkuniApiApplicationTest(
         val postgres = PostgreSQLContainer("postgres:17")
     }
 
+    // application.yaml의 접속 옵션(options=-c jit=off)이 api 연결에 적용되는지 본다. 이유는 그 설정의 주석.
+    @Test
+    fun `api의 DB 연결은 JIT가 꺼져 있다`() {
+        assertEquals("off", jdbcTemplate.queryForObject("SHOW jit", String::class.java))
+    }
+
     @Test
     fun `Flyway가 V1을 적용해 pg_trgm 확장이 생긴다`() {
         val versions = jdbcTemplate.queryForList(
