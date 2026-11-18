@@ -1,6 +1,7 @@
 package com.alkkuni.batch.product
 
 import com.alkkuni.batch.JobLock
+import com.alkkuni.batch.JobRun
 import com.alkkuni.batch.foodsafety.FoodSafetyClient
 import com.alkkuni.batch.raw.RawStore
 import com.alkkuni.core.ingestion.repository.IngestionCursorRepository
@@ -40,9 +41,9 @@ class IncrementalCollectJob(
     private val clock: Clock,
 ) : ApplicationRunner {
 
-    override fun run(args: ApplicationArguments) = jobLock.withLock(SERVICE) { collect() }
+    override fun run(args: ApplicationArguments) = jobLock.withLock(SERVICE) { collect(it) }
 
-    private fun collect() {
+    private fun collect(run: JobRun) {
         // 예외로 끝내야 프로세스가 0이 아닌 코드로 종료돼 cron 쪽에서 실패를 알 수 있다.
         val cursor = checkNotNull(cursorRepository.findByIdOrNull(SERVICE)) {
             "$SERVICE 커서가 없다. 초기 적재(alkkuni.job=initial-load)를 먼저 돌린다."
@@ -65,6 +66,10 @@ class IncrementalCollectJob(
             changed += upserter.upsert(rows)
             rows.mapTo(seen) { it.reportNo }
         }
+
+        // 실패로 끝나도 어디까지 받았는지 실행 기록에 남긴다.
+        run.processed = seen.size
+        run.changed = changed
 
         // 덜 받은 것만 실패로 본다. 더 받은 것은 total_count 갱신 지연이다(InitialLoadJob과 같은 이유).
         check(seen.size >= totalCount) {

@@ -1,6 +1,7 @@
 package com.alkkuni.batch.recall
 
 import com.alkkuni.batch.JobLock
+import com.alkkuni.batch.JobRun
 import com.alkkuni.batch.foodsafety.FoodSafetyClient
 import com.alkkuni.batch.raw.RawStore
 import org.slf4j.LoggerFactory
@@ -34,9 +35,9 @@ class RecallCollectJob(
     private val clock: Clock,
 ) : ApplicationRunner {
 
-    override fun run(args: ApplicationArguments) = jobLock.withLock(SERVICE) { collect() }
+    override fun run(args: ApplicationArguments) = jobLock.withLock(SERVICE) { collect(it) }
 
-    private fun collect() {
+    private fun collect(run: JobRun) {
         val collectedAt = LocalDateTime.now(clock)
         val rows = mutableListOf<I0490Row>()
         var skipped = 0
@@ -67,6 +68,8 @@ class RecallCollectJob(
             "{} 회수 수집 완료: {}건 받음, 새 회수 {}건, 목록에서 빠짐 {}건, 다시 올라옴 {}건",
             SERVICE, seqCount, result.created, result.delisted, result.relisted,
         )
+        run.processed = seqCount
+        run.changed = result.created + result.delisted + result.relisted
         // 새 건·갱신은 이미 반영했다. 빠짐 처리를 건너뛴 날은 실패로 끝내 다음 실행 전에 사람이 보게 한다.
         check(result.delistSkipped == null) { "$SERVICE 빠짐 처리를 건너뛰었다: ${result.delistSkipped}" }
     }

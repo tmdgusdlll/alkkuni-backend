@@ -1,6 +1,7 @@
 package com.alkkuni.batch.product
 
 import com.alkkuni.batch.JobLock
+import com.alkkuni.batch.JobRun
 import com.alkkuni.batch.foodsafety.FoodSafetyClient
 import com.alkkuni.batch.raw.RawStore
 import com.alkkuni.core.ingestion.entity.IngestionCursor
@@ -35,9 +36,9 @@ class InitialLoadJob(
     private val clock: Clock,
 ) : ApplicationRunner {
 
-    override fun run(args: ApplicationArguments) = jobLock.withLock(SERVICE) { load() }
+    override fun run(args: ApplicationArguments) = jobLock.withLock(SERVICE) { load(it) }
 
-    private fun load() {
+    private fun load(run: JobRun) {
         val collectedAt = LocalDateTime.now(clock)
         val seen = HashSet<String>()
         var changed = 0
@@ -50,6 +51,10 @@ class InitialLoadJob(
             rows.mapTo(seen) { it.reportNo }
             log.info("{} {}페이지: 누적 {}/{}건", SERVICE, pageNo, seen.size, page.totalCount)
         }
+
+        // 실패로 끝나도 어디까지 받았는지 실행 기록에 남긴다.
+        run.processed = seen.size
+        run.changed = changed
 
         // 덜 받은 것만 실패로 본다. 더 받은 것은 당일 신고 제품이 행에는 바로 나오고 total_count는 늦게 따라오는 경우다
         // (2026-11-04 total_count 46,179에 46,182건). 받은 행은 전부 저장했으니 잃은 데이터가 없다.

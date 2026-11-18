@@ -1,18 +1,27 @@
 package com.alkkuni.batch
 
+import org.flywaydb.core.Flyway
 import org.mockito.Mockito.mock
+import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.jdbc.datasource.DriverManagerDataSource
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import org.testcontainers.postgresql.PostgreSQLContainer
+import java.time.Clock
+import java.time.Instant
+import java.time.LocalDateTime
+import java.time.ZoneId
 import javax.sql.DataSource
+import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 
 /** 잡 단위 테스트용. DB 없이 바로 실행한다. */
-fun noLock(): JobLock = object : JobLock(mock(DataSource::class.java)) {
-    override fun <T> withLock(key: String, block: () -> T): T = block()
+fun noLock(): JobLock = object : JobLock(mock(DataSource::class.java), Clock.systemDefaultZone(), "test") {
+    override fun <T> withLock(key: String, block: (JobRun) -> T): T = block(JobRun())
 }
 
 @Testcontainers
@@ -22,8 +31,21 @@ class JobLockTest {
         val postgres = PostgreSQLContainer("postgres:17")
     }
 
+    private val dataSource by lazy { DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password) }
+    private val jdbc by lazy { JdbcTemplate(dataSource) }
+    private val clock = Clock.fixed(Instant.parse("2026-11-18T19:00:00Z"), ZoneId.of("Asia/Seoul"))
+
     // 잡마다 프로세스가 따로 뜨는 상황을 흉내 낸다. 두 JobLock은 서로 다른 연결을 쓴다.
-    private fun lock() = JobLock(DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password))
+    private fun lock(job: String = "incremental") = JobLock(dataSource, clock, job)
+
+    @BeforeTest
+    fun migrate() {
+        Flyway.configure().dataSource(dataSource)
+            .locations("filesystem:../api/src/main/resources/db/migration").load().migrate()
+        jdbc.execute("TRUNCATE job_run")
+    }
+
+    private fun runs(): List<Map<String, Any?>> = jdbc.queryForList("SELECT * FROM job_run ORDER BY id")
 
     @Test
     fun `같은 키가 실행 중이면 다른 프로세스는 실패하고, 끝나면 다시 잡힌다`() {
@@ -46,5 +68,50 @@ class JobLockTest {
         assertFailsWith<IllegalStateException> { first.withLock("I0030") { error("수집 실패") } }
 
         assertEquals("ok", lock().withLock("I0030") { "ok" })
+    }
+
+    @Test
+    fun `성공하면 작업 이름·시각·건수가 SUCCEEDED로 남는다`() {
+        lock("incremental").withLock("I0030") { run ->
+            run.processed = 120
+            run.changed = 7
+        }
+
+        val row = runs().single()
+        assertEquals("incremental", row["job_name"])
+        assertEquals("SUCCEEDED", row["status"])
+        assertEquals(LocalDateTime.now(clock), (row["started_at"] as java.sql.Timestamp).toLocalDateTime())
+        assertNotNull(row["finished_at"])
+        assertEquals(120, row["processed_count"])
+        assertEquals(7, row["changed_count"])
+        assertNull(row["error_message"])
+    }
+
+    @Test
+    fun `작업이 예외로 끝나면 FAILED와 오류 메시지가 남고 예외는 그대로 나간다`() {
+        val e = assertFailsWith<IllegalStateException> {
+            lock("recall").withLock("I0490") { error("total_count가 다르다") }
+        }
+        assertEquals("total_count가 다르다", e.message)
+
+        val row = runs().single()
+        assertEquals("recall", row["job_name"])
+        assertEquals("FAILED", row["status"])
+        assertNotNull(row["finished_at"])
+        assertEquals("java.lang.IllegalStateException: total_count가 다르다", row["error_message"])
+    }
+
+    @Test
+    fun `잠금을 못 잡으면 그 실행도 FAILED로 남는다`() {
+        lock("initial-load").withLock("I0030") {
+            assertFailsWith<IllegalStateException> { lock("incremental").withLock("I0030") {} }
+        }
+
+        val failed = runs().single { it["job_name"] == "incremental" }
+        assertEquals("FAILED", failed["status"])
+        assertEquals(
+            "java.lang.IllegalStateException: I0030 작업이 이미 실행 중이다. 끝난 뒤 다시 돌린다.",
+            failed["error_message"],
+        )
     }
 }
