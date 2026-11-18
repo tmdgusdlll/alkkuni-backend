@@ -33,7 +33,7 @@
   - [x] 성분별 제품 목록 API(JDSL, 성분 AND·제외·제형·함량 범위, 주 단위 정렬) + 성분 목록 API (PR #23)
   - [x] 1일 기준값: 기준값·상한 V11·상한 2배 초과 판정(PR #24), "기준 충족" 필터(PR #25), 응답의 기준 대비 %·충족·상한 초과 경고와 기능성 원료 상한 V12
   - [x] **다음**: ~~브랜드 사전(V13, 연결만)~~ → ~~응답 `brand`·검색 별칭·목록 브랜드 필터·브랜드 목록 API~~ → ~~수출용 제품 표시·정렬·필터(V14)~~ → ~~기능성 카테고리(판정·V15·`link-categories` → 목록 `category=` 필터·카테고리 목록 API·응답 `categories`)~~. 순서는 2026-11-08에 바꿨다(작업 로그). 수출용은 2026-11-13에 끼워 넣었다
-  - [ ] ~~메인 인기 성분 비교(고정 목록)~~(백엔드 작업 없음: 프론트가 기존 성분별 목록 API로 고정 6개를 띄움, 2026-11-12 PLANNING.md "메인 인기 성분"), 제품 이미지 1차(V17 `product.image_url` 컬럼·응답 `imageUrl`, NULL이면 프론트가 제형 아이콘, 인기 제품 몇 개만 SQL로 넣음. 등록·수정 API는 4단계 관리자로 미룸, 2026-11-16), 구매 링크 1차(ADR-008. `ShoppingLink` 테이블·응답 링크·대가성 문구, 인기 제품 링크만 SQL로 넣음. 등록·수정 API는 4단계 관리자로 미룸, 2026-11-16). PLANNING.md MVP 표에 있는데 작업 순서에서 빠져 있었다(2026-11-07)
+  - [ ] ~~메인 인기 성분 비교(고정 목록)~~(백엔드 작업 없음: 프론트가 기존 성분별 목록 API로 고정 6개를 띄움, 2026-11-12 PLANNING.md "메인 인기 성분"), 제품 이미지 1차(V18 `product.image_url` 컬럼·응답 `imageUrl`, NULL이면 프론트가 제형 아이콘, 인기 제품 몇 개만 SQL로 넣음. 등록·수정 API는 4단계 관리자로 미룸, 2026-11-16), 구매 링크 1차(ADR-008. `ShoppingLink` 테이블·응답 링크·대가성 문구, 인기 제품 링크만 SQL로 넣음. 등록·수정 API는 4단계 관리자로 미룸, 2026-11-16). PLANNING.md MVP 표에 있는데 작업 순서에서 빠져 있었다(2026-11-07)
   - [ ] 메인 통계 API(`GET /api/stats`: 제품 수·기준일)와 소식 목록 API(`GET /api/news`: 회수부터). 프론트 메인이 기다리는 것. PLANNING.md "메인 통계·소식 API"
   - [ ] 인기 순위(MVP 이후, 순서 미정): 날짜별 조회 카운트·`GET /api/home/popular`(조회 시 7일 집계 + CloudFront 60초 캐시, 배치 없음)·k6로 카운트 성능 측정 → 결과로 DB 유지·Redis 도입 결정. PLANNING.md "메인 인기 성분" 2·3
   - [x] ‖ batch 실행 기록(`job_run`, V17): 작업마다 시작·끝·성공 여부·처리 건수·오류를 한 줄씩 남긴다. 계측·알림(아래)의 데이터 출처
@@ -104,7 +104,7 @@
 
 ## 완료
 
-- [x] batch 실행 기록 `job_run`(V17): `JobLock.withLock`이 모든 작업의 실행을 RUNNING → SUCCEEDED/FAILED로 남기고, 수집 작업 3개(`initial-load`·`incremental`·`recall`)는 처리·변경 건수도 남긴다. 성공·예외·잠금 실패 테스트 (2026-11-18)
+- [x] batch 실행 기록 `job_run`(V17): `JobLock.withLock`이 모든 작업의 실행을 RUNNING → SUCCEEDED/FAILED로 남기고, 수집 작업 3개(`initial-load`·`incremental`·`recall`)는 처리·변경 건수도 남긴다. 성공·예외·잠금 실패·Error·연결 끊김 테스트 (PR #43, 2026-11-18)
 - [x] 기본 배포: Dockerfile·운영 compose·Nginx, `ci-cd.yml` 배포 job(OIDC, `main`만), `deploy.sh`(Parameter Store로 `.env`, healthy 확인, `.prev/` 자동 롤백), S3 `RawStore`, 운영 첫 적재 46,401건과 메모리 실측, `ANALYZE product` 단축(V16), api 연결 JIT 끔, 기본 배포 마무리 (PR #37~#42, 2026-11-16~18). 측정값은 작업 로그 2026-11-18
 - [x] 수출용 제품 판정(`ExportName`, V14 `export_only`, `alkkuni.job=mark-export`, 로컬 2,608개), 응답 `exportOnly`, 검색·성분별 목록 기본 정렬에서 국내 제품 뒤로와 `market` 필터, 브랜드 목록 국내·수출 수, 로컬 실제 데이터로 확인 (PR #33, 2026-11-13)
 - [x] 제품 응답(검색·목록·비교·상세)에 `brand`, 검색어가 브랜드 표기면 그 브랜드 제품을 더하고 `matchedBrand`, 성분별 목록 `brand=` 필터, 브랜드 목록 API(`GET /api/brands`, 제품 수 순), 로컬 실제 데이터로 호출·응답 시간 확인 (PR #32, 2026-11-12)
@@ -159,6 +159,7 @@
 - 기록은 `JobLock.withLock` 한 곳에서 한다. 모든 작업이 지나는 곳이라 작업마다 넣지 않아도 되고, 잠금 실패도 같은 자리에서 FAILED로 남는다. 작업 이름은 잠금 키가 아니라 `alkkuni.job` 값이다. 잠금 키 `I0030`은 수집·연결 작업 여섯 개가 같이 써서 무엇이 돌았는지 구분되지 않는다.
 - 기록은 잠금 연결(autocommit)로 바로 커밋한다. 작업 트랜잭션과 따로라 작업이 롤백돼도 FAILED가 남는다(`RecallSnapshotApplier`처럼 먼저 커밋하고 뒤에서 실패하는 작업도 그대로 FAILED).
 - 건수는 block 인자 `JobRun`으로 받는다. 기존 `{ linker.link() }` 같은 호출은 인자를 안 써도 그대로 컴파일돼, 건수가 필요한 수집 작업 3개만 고쳤다. 증분·초기 적재는 total_count 검사 전에 건수를 넣어 "덜 받아 실패"한 날도 몇 건 받았는지 남는다. 연결 작업(`link-*`, `mark-export`)은 손으로 돌리는 작업이라 건수 없이 상태만 남긴다.
+- `/code-review` 반영: 시각을 `timestamptz`로 바꿨다(다른 테이블은 KST `TIMESTAMP`). 주 용도가 "DB `now()`로부터 몇 시간 지났나"인데, KST 숫자를 `TIMESTAMP`에 넣으면 UTC인 `now()`와 9시간 어긋나 "26시간째 성공 없음"이 35시간에야 울린다. 넣을 때는 `OffsetDateTime`을 쓴다(`LocalDateTime`이면 세션 시간대 UTC로 읽혀 또 어긋난다). 그 밖에 기록이 작업 결과를 바꾸지 않게 했다: `Throwable`(OOM)도 FAILED로 남기고, unlock·FAILED 기록이 연결 끊김으로 실패해도 원래 예외에 `addSuppressed`로 붙이며, SUCCEEDED 기록 실패는 로그만 남긴다. 건수는 페이지마다 갱신해 도중 실패에도 남는다. 제품 이미지 마이그레이션은 V18이 된다.
 - 프로세스가 죽으면 RUNNING으로 남는다. 따로 정리하지 않는다. Grafana의 "26시간째 성공 없음" 규칙이 실패·미실행·멈춤을 함께 잡기 때문이다. `run-job.sh`가 api unhealthy로 JVM을 띄우지 않은 날도 행이 없어 같은 규칙에 걸린다.
 
 ### 2026-11-18 (기본 배포 마무리, PR #42)
@@ -187,7 +188,7 @@
 - 원인: DB collation이 libc `en_US.utf8`이고, glibc `strcoll`은 한글 문자열에서 길이의 제곱에 비례해 느려진다(길이 2배 → 시간 4배, 545자 비교 1회 16ms, ASCII는 선형). 통계를 만들 때 표본 값을 정렬하는데, 열별로 재 보니 `precautions` 264초, `functionality` 39초, `standard_text` 3초였다. `precautions`는 앞부분이 같은 긴 값이 많아 비교가 특히 비싸다. 같은 데이터를 `C` collation으로 정렬하면 0.13초.
 - 해결: V16에서 두 열을 `SET STATISTICS 0`으로 ANALYZE 대상에서 뺐다. 두 열은 화면 표시와 Kotlin 카테고리 판정에만 쓰고 SQL 조건·정렬에는 쓰지 않아 플래너 통계가 필요 없다. 로컬 `ANALYZE product` 5분 30초 → 14.9초. DB collation을 `C`로 바꾸는 방법은 DB를 다시 만들어야(덤프·복원) 해서 고르지 않았다. 나중에 이 열을 조건·정렬에 쓰게 되면 `SET STATISTICS -1`로 되돌린다.
 - 운영 측정(배포 뒤 `ANALYZE product` 시간)은 배포 마무리 PR에서 적는다. 유휴 검색 지연(280~386ms)은 이 문제와 별개로 따로 조사한다.
-- 제품 이미지 마이그레이션은 V17로 밀렸다.
+- 제품 이미지 마이그레이션은 V17로 밀렸다(이어 `job_run`이 V17을 써서 V18, 2026-11-18).
 
 ### 2026-11-16 (S3 RawStore, 첫 배포)
 - 첫 배포(PR #37) 성공, `api healthy: 31초`. 처음엔 OIDC 신뢰 정책의 `sub`가 맞지 않아 `AssumeRoleWithWebIdentity`에서 거절됐다. 이 레포는 GitHub immutable subject가 켜져 있어 `sub`가 `repo:<owner>@<ownerID>/<repo>@<repoID>:ref:...` 형식이다. 신뢰 정책을 이 값으로 고쳤다(`StringEquals` 유지). 두 번째 배포(PR #38)도 31초, `.prev/` 백업 확인.

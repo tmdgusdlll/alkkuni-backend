@@ -49,13 +49,11 @@ class InitialLoadJob(
             val rows = page.rows.map(I0030Row::from)
             changed += upserter.upsert(rows)
             rows.mapTo(seen) { it.reportNo }
+            // 페이지마다 갱신해 도중에 실패해도 어디까지 받았는지 실행 기록에 남는다.
+            run.processed = seen.size
+            run.changed = changed
             log.info("{} {}페이지: 누적 {}/{}건", SERVICE, pageNo, seen.size, page.totalCount)
         }
-
-        // 실패로 끝나도 어디까지 받았는지 실행 기록에 남긴다.
-        run.processed = seen.size
-        run.changed = changed
-
         // 덜 받은 것만 실패로 본다. 더 받은 것은 당일 신고 제품이 행에는 바로 나오고 total_count는 늦게 따라오는 경우다
         // (2026-11-04 total_count 46,179에 46,182건). 받은 행은 전부 저장했으니 잃은 데이터가 없다.
         // ponytail: 새 행 n건과 빠진 행 m건(n ≥ m)이 겹치면 빠짐이 가려진다. 빠짐은 페이징 도중 수정으로 행이 밀릴 때라 드물다.

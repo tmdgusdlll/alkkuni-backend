@@ -53,6 +53,8 @@ class RecallCollectJob(
                     log.warn("{} 행을 건너뜀: {}", SERVICE, e.message)
                 }
             }
+            // 도중에 실패해도 어디까지 받았는지 남긴다. 저장은 다 받은 뒤 apply에서 하므로 그 전 실패면 changed는 비어 있다.
+            run.processed = rows.size
         }
 
         val seqCount = rows.distinctBy { it.sourceSeq }.size

@@ -9,7 +9,6 @@ import org.testcontainers.junit.jupiter.Testcontainers
 import org.testcontainers.postgresql.PostgreSQLContainer
 import java.time.Clock
 import java.time.Instant
-import java.time.LocalDateTime
 import java.time.ZoneId
 import javax.sql.DataSource
 import kotlin.test.BeforeTest
@@ -18,10 +17,11 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
-/** 잡 단위 테스트용. DB 없이 바로 실행한다. */
-fun noLock(): JobLock = object : JobLock(mock(DataSource::class.java), Clock.systemDefaultZone(), "test") {
-    override fun <T> withLock(key: String, block: (JobRun) -> T): T = block(JobRun())
+/** 잡 단위 테스트용. DB 없이 바로 실행한다. 작업이 넣은 건수는 [run]으로 확인한다. */
+fun noLock(run: JobRun = JobRun()): JobLock = object : JobLock(mock(DataSource::class.java), Clock.systemDefaultZone(), "test") {
+    override fun <T> withLock(key: String, block: (JobRun) -> T): T = block(run)
 }
 
 @Testcontainers
@@ -80,7 +80,8 @@ class JobLockTest {
         val row = runs().single()
         assertEquals("incremental", row["job_name"])
         assertEquals("SUCCEEDED", row["status"])
-        assertEquals(LocalDateTime.now(clock), (row["started_at"] as java.sql.Timestamp).toLocalDateTime())
+        // timestamptz라 KST로 넣은 시각이 같은 순간으로 읽힌다(9시간 밀리지 않는다)
+        assertEquals(clock.instant(), (row["started_at"] as java.sql.Timestamp).toInstant())
         assertNotNull(row["finished_at"])
         assertEquals(120, row["processed_count"])
         assertEquals(7, row["changed_count"])
@@ -113,5 +114,28 @@ class JobLockTest {
             "java.lang.IllegalStateException: I0030 작업이 이미 실행 중이다. 끝난 뒤 다시 돌린다.",
             failed["error_message"],
         )
+    }
+
+    @Test
+    fun `OOM 같은 Error로 끝나도 FAILED로 남는다`() {
+        assertFailsWith<OutOfMemoryError> { lock().withLock("I0030") { throw OutOfMemoryError("Java heap space") } }
+
+        val row = runs().single()
+        assertEquals("FAILED", row["status"])
+        assertEquals("java.lang.OutOfMemoryError: Java heap space", row["error_message"])
+    }
+
+    @Test
+    fun `작업 중 연결이 끊겨도 원래 실패 원인이 남는다`() {
+        val e = assertFailsWith<IllegalStateException> {
+            lock().withLock("I0030") {
+                // DB 재시작처럼 잠금 연결을 끊는다. 그 뒤 unlock·FAILED 기록이 실패한다.
+                jdbc.execute("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE query LIKE '%pg_try_advisory_lock%' AND pid <> pg_backend_pid()")
+                error("적재 실패")
+            }
+        }
+
+        assertEquals("적재 실패", e.message)
+        assertTrue(e.suppressed.isNotEmpty())
     }
 }

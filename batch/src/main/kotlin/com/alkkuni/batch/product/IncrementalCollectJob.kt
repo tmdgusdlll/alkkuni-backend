@@ -65,12 +65,10 @@ class IncrementalCollectJob(
             val rows = page.rows.map(I0030Row::from)
             changed += upserter.upsert(rows)
             rows.mapTo(seen) { it.reportNo }
+            // 페이지마다 갱신해 도중에 실패해도 어디까지 받았는지 실행 기록에 남는다.
+            run.processed = seen.size
+            run.changed = changed
         }
-
-        // 실패로 끝나도 어디까지 받았는지 실행 기록에 남긴다.
-        run.processed = seen.size
-        run.changed = changed
-
         // 덜 받은 것만 실패로 본다. 더 받은 것은 total_count 갱신 지연이다(InitialLoadJob과 같은 이유).
         check(seen.size >= totalCount) {
             "$SERVICE CHNG_DT=$since 받은 신고번호 ${seen.size}건이 total_count ${totalCount}건보다 적다. 커서를 옮기지 않고 다음 실행이 다시 받는다."
