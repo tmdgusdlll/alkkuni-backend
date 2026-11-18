@@ -164,7 +164,9 @@
 ### 2026-11-18 (Nginx 실제 IP 복원·호출 제한)
 - `deploy/nginx/default.conf`에 실제 IP 복원(`set_real_ip_from 0.0.0.0/0`, 보안 그룹에 맡김)과 `limit_req`(`10r/s`, `burst=20 nodelay`, 429)를 넣었다. `/api/`와 `/`를 세고 `/_next/static/`·`/actuator/health`는 뺐다. `X-Forwarded-Proto`는 3단계 인증 PR로 미뤘다(PLANNING.md "보안 운영").
 - 로컬 확인(nginx 1.29, 헤더를 돌려주는 가짜 api·web): `nginx -t` 통과. 같은 IP로 `/api/` 30번 연속 → 21번째까지 200, 이후 429(초당 10개가 다시 차서 중간에 200 한 번). 바로 다른 IP는 200. 같은 IP의 `/`도 같은 통이라 429. `/_next/static/` 30번은 모두 200, 헤더 없는 `/actuator/health` 200. `X-Forwarded-For: 1.1.1.1, 211.0.0.1`(앞이 꾸민 값)은 로그에 `211.0.0.1`로 찍혔다.
-- 남은 것(콘솔, 수동): CloudFront 배포(HTTP→HTTPS 리다이렉트, 캐시 동작은 PLANNING.md "배포"), 보안 그룹 80을 CloudFront prefix list로, Route 53 별칭. 검증: 휴대폰 접속, `x-cache: Hit`, 운영 429, access log에 실제 IP, EC2 IP 직접 접속 타임아웃, ACM 인증 CNAME 유지.
+- PR #45 `/code-review`(Important 3 / Nit 4) 반영: 링크 미리 불러오기가 일반 통을 바로 넘겨 정상 사용자가 429를 받는 문제 → 미리 불러오기 헤더 요청은 따로 넉넉한 통(`30r/s`·`burst=100`). CloudFront 원본 요청 정책이 없어 헤더·쿠키·POST가 원본에 안 가는 문제와, 정적 페이지 `s-maxage` 1년 캐시로 재배포 뒤 옛 HTML이 404를 부르는 문제 → 페이지는 `CachingDisabled`, `/api/*`·페이지는 `AllViewer`·모든 메서드(PLANNING.md "배포"). Nit: `/actuator/health`에도 제한, api·web에 넘기는 XFF를 `$remote_addr` 하나로, IP 단위 한계와 웹훅 제외 시점을 문서에 적음.
+- 재확인(로컬): `nginx -t` 통과. 꾸민 XFF는 뒤로 `211.0.0.1` 하나만 넘어감. 일반 `/api/` 30번 → 21번째까지 200. 미리 불러오기 60번 연속은 모두 200이고 바로 이어진 같은 IP 일반 요청도 200(별개 통). 미리 불러오기 200개 동시 → 109개 200·91개 429(상한 유지). 일반 60개 동시 → 21개 200. 같은 IP `/actuator/health` 30번 → 23개 200·7개 429, 헤더 없는 health 200.
+- 남은 것(콘솔, 수동): CloudFront 배포(HTTP→HTTPS 리다이렉트, 동작별 정책은 PLANNING.md "배포" 표), 보안 그룹 80을 CloudFront prefix list로, Route 53 별칭. 검증: 휴대폰 접속, `x-cache: Hit`, 운영 429, access log에 실제 IP, EC2 IP 직접 접속 타임아웃, ACM 인증 CNAME 유지.
 
 ### 2026-11-18 (호출 제한 두 겹, 검색 색인 차단 방식)
 - 호출 제한을 Nginx `limit_req`(IP 단위, 공개 때)와 앱 Bucket4j(회원 단위, 3단계 인증 뒤)로 나눴다(PLANNING.md "보안 운영"). IP로는 "회원 한 명"을 구분할 수 없고(통신사 NAT로 여러 명이 한 IP, 한 명이 IP를 바꿈), 쓰기·비싼 요청은 회원 기준이 맞다. 비로그인 요청은 Nginx에만 맡겨 같은 일을 두 번 하지 않는다. 저장소는 api가 한 대라 메모리로 시작하고, 두 대가 되면 공유 저장소로 옮긴다.

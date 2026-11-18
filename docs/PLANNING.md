@@ -252,12 +252,12 @@ I0030을 비롯한 식약처·공공데이터 API에는 제품 이미지가 없�
 
 사고가 난 뒤에 고치는 것에 그치지 않도록, 아래 항목을 미리 넣어 두고 PR마다 같은 기준으로 점검한다.
 
-- 실제 사용자 IP 복원: CloudFront 뒤라 Nginx가 보는 연결 IP는 모두 CloudFront다. `real_ip_header X-Forwarded-For`(recursive 끔)로 CloudFront가 맨 끝에 붙인 값만 쓴다. 이게 없으면 아래 호출 제한과 IP 제한이 CloudFront 단위로 걸린다.
+- 실제 사용자 IP 복원: CloudFront 뒤라 Nginx가 보는 연결 IP는 모두 CloudFront다. `real_ip_header X-Forwarded-For`(recursive 끔)로 CloudFront가 맨 끝에 붙인 값만 쓴다. 클라이언트가 앞에 꾸며 넣은 값(XFF 위조)은 무시된다. 이게 없으면 아래 호출 제한과 IP 제한이 CloudFront 단위로 걸린다. api·web에는 받은 헤더를 이어 붙이지 않고 골라낸 IP 하나(`$remote_addr`)만 넘긴다. 이어 붙이면 맨 앞에 꾸민 값이 남아 뒤에서 맨 앞을 사용자 IP로 읽으면 속는다.
   - `set_real_ip_from`은 `0.0.0.0/0`(2026-11-18 정함). 직접 접속은 보안 그룹이 막으므로 Nginx에서 연결 IP를 다시 따지지 않는다. CloudFront 대역을 나열하면 AWS가 대역을 바꿀 때마다 손으로 고쳐야 한다. 대가는 보안 그룹이 잘못 열리면 헤더를 꾸며 호출 제한을 피할 수 있다는 것(인증·권한은 IP와 무관).
   - `X-Forwarded-Proto`는 CloudFront~Nginx가 HTTP라 지금 `http`로 넘어간다. 전체 URL을 만드는 곳(소셜 로그인 리다이렉트)이 생기는 3단계 인증 PR에서 Host 전달·`forward-headers-strategy`와 함께 맞춘다. 그 전제로 CloudFront는 HTTP를 HTTPS로 리다이렉트한다.
 - 직접 접속 차단: EC2 보안 그룹의 80/443은 CloudFront 관리형 prefix list만 허용한다. EC2 IP로 바로 와서 헤더를 꾸미는 요청을 막는다.
 - 호출 제한(rate limit)은 두 겹으로 둔다(2026-11-18 정함).
-  - 1겹 Nginx `limit_req`(사이트 공개 때, CloudFront PR): 모든 요청을 실제 사용자 IP 단위로 센다. 처음 값은 `10r/s`·`burst=20 nodelay`(넉넉하게 두고 공개 뒤 로그로 조인다). `/api/`와 페이지(`/`) 둘 다 세고 `/_next/static/`(해시 붙은 정적 파일)만 뺀다. 서버 컴포넌트는 `api:8080`을 직접 불러 Nginx를 안 거치므로 페이지 요청이 백엔드 부하의 관문이다. 로그인과 상관없이 크롤러·반복 호출을 앱에 닿기 전에 막고, 넘치면 429(`limit_req_status 429`, 기본은 503). 화면 한 번에 요청이 여러 개라 `burst`를 둔다. 소셜 연결 해제 웹훅 경로는 제공자 서버 IP에서 몰려 올 수 있어 이 제한에서 뺀다(웹훅은 서명 검증으로 막는다).
+  - 1겹 Nginx `limit_req`(사이트 공개 때, CloudFront PR): 모든 요청을 실제 사용자 IP 단위로 센다. 처음 값은 `10r/s`·`burst=20 nodelay`(넉넉하게 두고 공개 뒤 로그로 조인다). `/api/`·페이지(`/`)·`/actuator/health`(CloudFront 기본 동작으로 외부에 열림)를 세고 `/_next/static/`(해시 붙은 정적 파일)만 뺀다. Next 링크 미리 불러오기(`Next-Router-Prefetch`·`Next-Router-Segment-Prefetch` 헤더)는 보이는 링크마다 요청이 나가 일반 통을 바로 넘기므로 따로 넉넉한 통(`30r/s`·`burst=100`)에서 센다. 요청 하나는 두 통 중 하나에만 들어가고, 헤더를 꾸며도 미리 불러오기 통으로 옮겨 갈 뿐 상한은 남는다. 미리 불러오기가 web CPU를 많이 쓰면 프론트에서 목록 링크의 `prefetch`를 끈다. 서버 컴포넌트는 `api:8080`을 직접 불러 Nginx를 안 거치므로 페이지 요청이 백엔드 부하의 관문이다. 로그인과 상관없이 크롤러·반복 호출을 앱에 닿기 전에 막고, 넘치면 429(`limit_req_status 429`, 기본은 503). 화면 한 번에 요청이 여러 개라 `burst`를 둔다. 소셜 연결 해제 웹훅 경로는 제공자 서버 IP에서 몰려 올 수 있어 웹훅 PR(3단계)에서 이 제한에서 뺀다(웹훅은 서명 검증으로 막는다). IP 단위의 한계: 통신사 NAT 뒤 여러 명이 한 통을 쓰고, IPv6는 주소를 바꿔 가며 피할 수 있다. 공개 뒤 로그로 한도를 조인다.
   - 2겹 앱 Bucket4j(3단계 인증 뒤): IP로는 구분할 수 없는 "회원 한 명"을 기준으로, 쓰기·비싼 요청에만 건다. 서랍 담기·알림 설정 변경, 이메일을 보내는 요청(이메일 인증 등), 후기 작성(생기면), AI 도우미(생기면, 호출마다 비용). 같은 회원이 휴대폰 데이터·와이파이로 IP를 바꿔도 같은 통에서 줄어든다. 비로그인 요청은 Nginx에 맡기고 앱에서 다시 IP로 세지 않는다(같은 일을 두 번 하게 된다).
   - 키는 `member.id`, 버킷은 API별로 따로(서랍 쓰기와 AI 도우미 한도가 다르다). 위치는 Spring Security 인증 뒤의 `HandlerInterceptor`(경로별 한도). 넘치면 429와 `Retry-After` 헤더, 응답 본문은 `ApiResponse` 오류 코드 `TOO_MANY_REQUESTS`(`GlobalExceptionHandler`에 추가).
   - 저장소: api가 한 대라 메모리(Caffeine으로 오래 안 쓴 버킷을 비움). 재시작하면 통이 다시 차는데, 배포 때 한 번이라 문제없다. api가 두 대 이상이 되면 공유 저장소(Bucket4j PostgreSQL 연동 또는 Redis 도입 시 Redis)로 옮긴다. 그 전엔 서버마다 따로 세서 한도가 대수만큼 커진다.
@@ -281,7 +281,16 @@ I0030을 비롯한 식약처·공공데이터 API에는 제품 이미지가 없�
 - Nginx 라우팅: `/api/*`·`/actuator/health`는 api 컨테이너로, 나머지(`/`)는 web(Next.js) 컨테이너로 넘긴다.
 - 기본 배포 범위(2026-11-09 정함): Nginx(위 라우팅만) + api + batch + db. web이 아직 없어서 `/`는 502가 나도 된다. 보안 그룹 80·443은 닫아 두고, 헬스 체크는 SSM으로 EC2 안에서 Nginx를 거쳐(`curl localhost/actuator/health`) 한다. batch는 초기 적재와 메모리 실측(batch 실행 중 `docker stats`·swap 피크) 때문에 함께 올린다.
   - CloudFront를 붙일 때 한꺼번에 넣는 것: `set_real_ip_from`·`real_ip_header`, `limit_req`, 보안 그룹을 CloudFront prefix list로 열기. `/admin` IP 제한은 `/admin`이 생길 때 넣는다.
-  - CloudFront 캐시 동작(2026-11-18): `/api/*`와 기본(`/`)은 `UseOriginCacheControlHeaders-QueryStrings`(원본 `Cache-Control`을 따르고 없으면 캐시 안 함. `CachingOptimized`는 기본 TTL이 하루라 API에 위험), `/_next/static/*`은 `CachingOptimized`. 원본은 탄력적 IP의 퍼블릭 DNS, HTTP 80.
+  - CloudFront 동작(2026-11-18, PR #45 리뷰로 고침). 원본은 탄력적 IP의 퍼블릭 DNS, HTTP 80. 뷰어는 HTTP를 HTTPS로 리다이렉트.
+
+    | 경로 | 캐시 정책 | 원본 요청 정책 | 허용 메서드 |
+    |---|---|---|---|
+    | `/_next/static/*` | `CachingOptimized` | 없음 | GET, HEAD |
+    | `/api/*` | `UseOriginCacheControlHeaders-QueryStrings` | `AllViewer` | 전부 |
+    | 기본(`/`) | `CachingDisabled` | `AllViewer` | 전부 |
+
+    - 원본 요청 정책을 비워 두면 CloudFront가 헤더·쿠키를 대부분 빼고 넘겨 Next 화면 이동(`RSC` 헤더)·Server Action·세션 쿠키가 깨지고, 기본 메서드(GET/HEAD)라 POST는 403이 난다. 원본 요청 정책은 "넘길 것"만 정하고 캐시 키는 캐시 정책이 정하므로 쿠키를 넘겨도 `/api/*` 캐시가 사용자별로 갈라지지 않는다. 회원마다 다른 응답의 `private`·`no-store`는 위 "캐시" 규칙 그대로.
+    - 페이지는 CloudFront에 캐시하지 않는다. Next는 정적 페이지에 `s-maxage=31536000`을 붙일 수 있어, 원본 `Cache-Control`을 따르면 프론트 재배포 뒤에도 옛 HTML이 남고 그 HTML이 가리키는 옛 `/_next/static` 파일이 새 컨테이너에 없어 404로 화면이 깨진다. 같은 URL에 HTML과 RSC 응답이 섞여 캐시될 위험도 함께 없어진다. 대가는 페이지 요청이 매번 EC2까지 오는 것(응답 지연, 트래픽 급증을 Nginx 제한과 t4g.small이 받음). 무거운 정적 파일은 계속 CloudFront가, API는 60초 캐시가 받는다. 페이지 응답 시간이나 web CPU가 문제가 되면 프론트 배포마다 CloudFront 무효화를 넣고 페이지 캐시를 켠다.
 - 이미지(2026-11-13): Dockerfile 하나(`ARG MODULE`)로 api·batch를 만든다. jar는 CI가 Gradle로 먼저 빌드한다. 운영 구성은 `compose.prod.yaml`, Nginx 설정은 `deploy/nginx/default.conf`.
 - 배포는 서비스 단위 교체(`docker compose pull api && docker compose up -d --no-deps api`). `docker compose down`은 배포에 쓰지 않는다.
 - CI/CD 단계: (1) 테스트·빌드·ECR 푸시 → (2) SSM으로 교체 → (3) 헬스 체크(`/actuator/health`) 실패 시 직전 태그로 자동 롤백.
