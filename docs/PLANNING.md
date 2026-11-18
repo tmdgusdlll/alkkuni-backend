@@ -264,10 +264,10 @@ I0030을 비롯한 식약처·공공데이터 API에는 제품 이미지가 없�
 
 - 프론트·백엔드 레포와 CI/CD 분리. 이미지는 각 레포 CI가 만들어 ECR에 커밋 sha 태그로 올리고, EC2는 받아서 띄우기만 한다.
 - 운영 파일도 레포별로 나눈다(2026-11-18 정함, 2026-11-09 "compose 하나를 백엔드 레포에" 결정을 바꿈).
-  - 백엔드 레포: `compose.prod.yaml`(nginx·api·batch·db, 네트워크 `alkkuni`를 만듦), `deploy/nginx`, `deploy.sh`. 태그는 EC2 `.env`의 `API_TAG`·`BATCH_TAG`.
+  - 백엔드 레포: `compose.prod.yaml`(nginx·api·batch·db, 프로젝트 `alkkuni`), `deploy/nginx`, `deploy.sh`. 태그는 EC2 `.env`의 `API_TAG`·`BATCH_TAG`.
   - 프론트 레포: web 전용 compose(프로젝트 `alkkuni-web`)와 배포 스크립트. EC2에서는 `/opt/alkkuni/web/` 아래에 따로 두고(백엔드의 `.prev/`·`.next/`와 섞이지 않게), 태그는 그 안 `web.env`의 `WEB_TAG`. 프론트 CI가 SSM으로 그 sha의 배포 스크립트를 부른다.
   - 이유: compose·`.env`가 하나면 백엔드 배포가 `.env`를 다시 만들거나 롤백하면서 `WEB_TAG`를 지우거나 옛 값으로 되돌린다. 파일을 나누면 한쪽 배포·롤백이 다른 쪽을 건드리지 않는다. web compose를 프론트 레포에 두면 이미지와 같은 sha의 배포 파일을 받아 버전이 어긋나지 않는다.
-  - 두 레포의 약속: 네트워크 `alkkuni`(web이 external로 들어옴), 서비스 이름 `web`, 포트 3000. 메모리 한도는 레포가 나뉘어 있어 합계(2GB)를 양쪽 compose 주석에 적는다.
+  - 두 레포의 약속: 네트워크 `alkkuni_default`(백엔드 프로젝트 기본 네트워크, web이 external로 들어옴. 이름을 바꾸면 롤백이 깨진다), 서비스 이름 `web`, 포트 3000. 메모리 한도는 레포가 나뉘어 있어 합계(2GB)를 양쪽 compose 주석에 적는다.
   - 별도 infra 레포는 지금 규모에 과하다.
 - Nginx 라우팅: `/api/*`·`/actuator/health`는 api 컨테이너로, 나머지(`/`)는 web(Next.js) 컨테이너로 넘긴다.
 - 기본 배포 범위(2026-11-09 정함): Nginx(위 라우팅만) + api + batch + db. web이 아직 없어서 `/`는 502가 나도 된다. 보안 그룹 80·443은 닫아 두고, 헬스 체크는 SSM으로 EC2 안에서 Nginx를 거쳐(`curl localhost/actuator/health`) 한다. batch는 초기 적재와 메모리 실측(batch 실행 중 `docker stats`·swap 피크) 때문에 함께 올린다.
