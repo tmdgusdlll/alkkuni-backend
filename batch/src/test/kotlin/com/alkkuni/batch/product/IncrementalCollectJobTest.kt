@@ -3,6 +3,7 @@ package com.alkkuni.batch.product
 import com.alkkuni.batch.brand.BrandDictionary
 import com.alkkuni.batch.ingredient.IngredientDictionary
 import com.alkkuni.batch.foodsafety.FoodSafetyClient
+import com.alkkuni.batch.JobRun
 import com.alkkuni.batch.noLock
 import com.alkkuni.batch.raw.LocalRawStore
 import com.alkkuni.core.ingestion.entity.IngestionCursor
@@ -52,8 +53,9 @@ class IncrementalCollectJobTest {
         override fun upsert(rows: List<I0030Row>): Int = rows.size.also { rows.mapTo(received) { it.reportNo } }
     }
     private val cursorRepository = mock(IngestionCursorRepository::class.java)
+    private val run = JobRun()
     private val job = IncrementalCollectJob(
-        client, LocalRawStore(Files.createTempDirectory("raw")), upserter, cursorRepository, noLock(), clock,
+        client, LocalRawStore(Files.createTempDirectory("raw")), upserter, cursorRepository, noLock(run), clock,
     )
 
     private fun givenCursor(date: LocalDate?): IngestionCursor? {
@@ -114,6 +116,9 @@ class IncrementalCollectJobTest {
 
         assertTrue(e.message!!.contains("total_count가 1001건에서 1000건으로"), e.message)
         assertEquals(0, cursorSaves())
+        // 실패해도 첫 페이지까지 받은 건수는 실행 기록에 남는다
+        assertEquals(1000, run.processed)
+        assertEquals(1000, run.changed)
     }
 
     @Test
