@@ -22,11 +22,15 @@ for f in compose.prod.yaml deploy/nginx/default.conf deploy/run-job.sh; do
 done
 # .env는 Parameter Store(/alkkuni/prod/*)로 만든다. 작은따옴표로 감싸야 compose가 값 안의 $·#를 해석하지 않는다.
 # 감쌀 수 없는 작은따옴표가 들어간 값은 거부한다.
+# 앞뒤 공백도 거부한다. 콘솔에 붙여 넣다 버킷 이름 끝에 공백이 들어가 첫 적재가 S3 400으로 실패했다(2026-11-16).
 aws ssm get-parameters-by-path --region "$REGION" --path /alkkuni/prod --with-decryption \
   --query 'Parameters[].[Name,Value]' --output text \
   | awk -F '\t' -v q="'" '{
       sub(".*/", "", $1)
       if (index($2, q)) { print $1 " 값에 작은따옴표가 있다" > "/dev/stderr"; exit 1 }
+      # 탭·줄바꿈이 든 값은 text 출력에서 칸이 늘거나 줄이 갈라져 NF가 2가 아니게 된다. NBSP(U+00A0)는 [[:space:]]에 안 잡혀 따로 본다.
+      if (NF != 2) { print NR "번째 줄: 값에 탭·줄바꿈이 있다" > "/dev/stderr"; exit 1 }
+      if ($2 ~ /^[[:space:]]|[[:space:]]$/ || index($2, "\302\240")) { print $1 " 값 앞뒤에 공백(줄바꿈·NBSP 포함)이 있다" > "/dev/stderr"; exit 1 }
       print $1 "=" q $2 q
     }' > .next/.env
 printf "API_TAG='%s'\nBATCH_TAG='%s'\n" "$SHA" "$SHA" >> .next/.env

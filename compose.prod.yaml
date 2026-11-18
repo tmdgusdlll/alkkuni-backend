@@ -7,7 +7,9 @@
 #           api가 healthy(Flyway 끝)인 뒤에만 돌린다(batch는 validate만 한다). depends_on으로 걸면 run이 api를 다시 만들거나
 #           api가 unhealthy일 때 배치가 안 돌아서, 순서는 run-job.sh가 헬스를 확인해 지킨다.
 #
-# ponytail: mem_limit은 t4g.small(2GB)에 맞춘 첫 추정값이다. batch 실행 중 docker stats·swap 피크를 재서 고친다(PROGRESS.md 기본 배포).
+# mem_limit(api·batch 640m, db 512m, nginx 64m)은 운영 첫 적재(46,401건, 2026-11-16)에서 잰 피크로 확인했다.
+# batch 381MiB, api 356MiB, db 254MiB, 남은 메모리 최소 337MiB, swap 4MiB, OOM 0회. 모두 한도 안이라 그대로 둔다.
+# 적재 중 검색 타임아웃 2회는 메모리가 아니라 CPU 경합(batch+db가 vCPU 2개 포화)이었다. 증분·회수는 새벽에 돌린다.
 # 로그 회전. 기본 json-file은 끝없이 쌓여 EBS가 차면 DB 쓰기·배포가 멈춘다.
 x-logging: &logging
   driver: json-file
