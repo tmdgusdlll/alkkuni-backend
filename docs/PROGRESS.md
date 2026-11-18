@@ -25,6 +25,10 @@
   - [ ] ‖ 배포 준비(직접): ~~도메인 확보~~(`kuromi.click`), ~~SES 프로덕션 액세스 요청~~(2026-11-08 승인), 개인정보처리방침·약관 초안 (`docs/guide/deploy-prep.md`, 로컬 전용)
   - [x] ‖ 기본 배포: Dockerfile, 운영 compose, `ci-cd.yml` 배포 job, EC2에서 `/actuator/health` UP, 메모리 실측 (PR #37~#42, 2026-11-18)
 - [ ] **2단계: 공개 API** ‖ 배포 계속(CloudFront, 도메인 연결)
+  - [ ] **먼저**: 사이트 공개(2026-11-18 당김, 작업 로그). 실제로 쓰면서 버그를 고치려고 메인 통계·소식 API보다 먼저 한다
+    - [ ] 백엔드: 프로젝트 이름 고정(`name: alkkuni`, 네트워크 `alkkuni_default` 유지), web 분리 배포 문서
+    - [ ] 프론트: Dockerfile(standalone)·web 전용 compose·배포 스크립트·CI(ECR `alkkuni-web` push → SSM), `robots.txt` 차단. `deploy-web.sh`의 `image prune`은 `alkkuni-web`으로 범위를 좁힌다(전체 prune은 72시간 지난 batch 이미지를 지운다). 검증: EC2에서 `curl localhost/` 200, batch 실행 중 `docker stats`(새벽 batch와 web이 겹칠 때가 메모리 피크)
+    - [ ] CloudFront + Route 53(ACM 만료 2026-12-27 전): Nginx 실제 IP 복원·`limit_req`·`X-Robots-Tag: noindex`, 보안 그룹 80은 CloudFront prefix list만. 검증: 휴대폰 접속, `x-cache: Hit`, 429
   - [x] `ApiResponse`·`@RestControllerAdvice` (PR #17)
   - [x] 수집 칼럼 추가(제형, 신고일, 기능성 원료, 기능성 원문, 주의사항) + 재적재 (PR #19)
   - [x] 검색 API(정렬만, V9 trigram 인덱스)
@@ -153,6 +157,12 @@
 - [ ] 상표(KIPRIS) 확인 (도메인은 `kuromi.click`으로 확보, 2026-11-06)
 
 ## 작업 로그
+
+### 2026-11-18 (사이트 공개 당김, web 배포 분리)
+- 사이트를 일찍 띄워 실제로 쓰며 버그를 고치려고 "프론트 배포 + CloudFront"를 메인 통계·소식 API보다 먼저 한다. 공개하되 검색 엔진에는 안 걸리게 `robots.txt`·`X-Robots-Tag`로 막고, CloudFront 캐시와 Nginx `limit_req`로 버틴다. IP 제한은 휴대폰 테스트가 불편해 넣지 않는다.
+- web 배포를 백엔드와 파일까지 나눴다(PLANNING.md "배포"). 처음엔 `.env` 하나에 `WEB_TAG`를 두고 백엔드 배포가 이어받게 하려 했는데, 백엔드 롤백이 `.prev/.env`를 되살리며 그 사이 배포한 프론트 태그를 옛 값으로 되돌린다. compose·태그 파일을 레포별로 나누고 web compose는 이미지와 같은 sha로 받도록 프론트 레포에 둔다.
+- 공유 네트워크는 지금 쓰는 `alkkuni_default`를 그대로 쓴다. 처음엔 이름을 `alkkuni`로 직접 정하고 머지 직전 EC2에서 `down`(볼륨 유지)한 뒤 배포하려 했다. 그냥 배포하면 순서(`up db nginx` → `up --no-deps api`) 때문에 compose가 아직 api가 붙은 옛 네트워크를 지우려다 실패해서다. 그런데 `/code-review`에서 롤백을 지적받아 로컬에서 재현해 보니, 롤백은 `.prev`의 옛 파일로 `up`해서 이름이 거꾸로 한 번 더 바뀐다. `down` 뒤 배포가 실패해 롤백하면 db·nginx·api가 모두 멈췄고(`network alkkuni not found`), `down`을 빠뜨리면 db·nginx는 `alkkuni`, api는 `alkkuni_default`로 갈라졌다. 이름을 그대로 두면 옛 파일과 새 파일이 같은 네트워크를 가리켜 롤백이 안전하고 수동 `down`도 필요 없다.
+- 프로젝트 이름은 `name: alkkuni`로 고정했다. DB 볼륨(`alkkuni_db-data`)과 공유 네트워크(`alkkuni_default`) 이름이 프로젝트 이름(기본은 디렉터리 이름)에서 나와서, 디렉터리가 바뀌면 빈 볼륨으로 뜨고 web과 끊긴다. 지금 값과 같아 바뀌는 것은 없다. 다른 프로젝트(`alkkuni-web`)의 web을 nginx가 `web`으로 찾고, 백엔드 재배포가 web을 건드리지 않는 것은 로컬에서 확인했다.
 
 ### 2026-11-18 (batch 실행 기록 job_run)
 - 4단계 관리자 수동 실행 요청(`collect_request`)과 한 테이블로 합치기로 했다. 요청 행이 그대로 실행 기록이 되는 설계라 테이블이 하나로 끝난다. 지금은 실행 기록 칼럼만 두고, 4단계에서 `REQUESTED` 상태·요청자·요청 시각을 더하고 `started_at`의 NOT NULL을 푼다(V17 주석).
