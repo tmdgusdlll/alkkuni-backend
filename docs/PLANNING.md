@@ -252,9 +252,18 @@ I0030을 비롯한 식약처·공공데이터 API에는 제품 이미지가 없�
 
 사고가 난 뒤에 고치는 것에 그치지 않도록, 아래 항목을 미리 넣어 두고 PR마다 같은 기준으로 점검한다.
 
-- 실제 사용자 IP 복원: CloudFront 뒤라 Nginx가 보는 연결 IP는 모두 CloudFront다. `set_real_ip_from`(CloudFront 대역) + `real_ip_header X-Forwarded-For`로 CloudFront가 보낸 헤더만 믿는다. 이게 없으면 아래 호출 제한과 IP 제한이 CloudFront 단위로 걸린다.
+- 실제 사용자 IP 복원: CloudFront 뒤라 Nginx가 보는 연결 IP는 모두 CloudFront다. `real_ip_header X-Forwarded-For`(recursive 끔)로 CloudFront가 맨 끝에 붙인 값만 쓴다. 이게 없으면 아래 호출 제한과 IP 제한이 CloudFront 단위로 걸린다.
+  - `set_real_ip_from`은 `0.0.0.0/0`(2026-11-18 정함). 직접 접속은 보안 그룹이 막으므로 Nginx에서 연결 IP를 다시 따지지 않는다. CloudFront 대역을 나열하면 AWS가 대역을 바꿀 때마다 손으로 고쳐야 한다. 대가는 보안 그룹이 잘못 열리면 헤더를 꾸며 호출 제한을 피할 수 있다는 것(인증·권한은 IP와 무관).
+  - `X-Forwarded-Proto`는 CloudFront~Nginx가 HTTP라 지금 `http`로 넘어간다. 전체 URL을 만드는 곳(소셜 로그인 리다이렉트)이 생기는 3단계 인증 PR에서 Host 전달·`forward-headers-strategy`와 함께 맞춘다. 그 전제로 CloudFront는 HTTP를 HTTPS로 리다이렉트한다.
 - 직접 접속 차단: EC2 보안 그룹의 80/443은 CloudFront 관리형 prefix list만 허용한다. EC2 IP로 바로 와서 헤더를 꾸미는 요청을 막는다.
-- 공개 API 호출 제한: Nginx `limit_req`.
+- 호출 제한(rate limit)은 두 겹으로 둔다(2026-11-18 정함).
+  - 1겹 Nginx `limit_req`(사이트 공개 때, CloudFront PR): 모든 요청을 실제 사용자 IP 단위로 센다. 처음 값은 `10r/s`·`burst=20 nodelay`(넉넉하게 두고 공개 뒤 로그로 조인다). `/api/`와 페이지(`/`) 둘 다 세고 `/_next/static/`(해시 붙은 정적 파일)만 뺀다. 서버 컴포넌트는 `api:8080`을 직접 불러 Nginx를 안 거치므로 페이지 요청이 백엔드 부하의 관문이다. 로그인과 상관없이 크롤러·반복 호출을 앱에 닿기 전에 막고, 넘치면 429(`limit_req_status 429`, 기본은 503). 화면 한 번에 요청이 여러 개라 `burst`를 둔다. 소셜 연결 해제 웹훅 경로는 제공자 서버 IP에서 몰려 올 수 있어 이 제한에서 뺀다(웹훅은 서명 검증으로 막는다).
+  - 2겹 앱 Bucket4j(3단계 인증 뒤): IP로는 구분할 수 없는 "회원 한 명"을 기준으로, 쓰기·비싼 요청에만 건다. 서랍 담기·알림 설정 변경, 이메일을 보내는 요청(이메일 인증 등), 후기 작성(생기면), AI 도우미(생기면, 호출마다 비용). 같은 회원이 휴대폰 데이터·와이파이로 IP를 바꿔도 같은 통에서 줄어든다. 비로그인 요청은 Nginx에 맡기고 앱에서 다시 IP로 세지 않는다(같은 일을 두 번 하게 된다).
+  - 키는 `member.id`, 버킷은 API별로 따로(서랍 쓰기와 AI 도우미 한도가 다르다). 위치는 Spring Security 인증 뒤의 `HandlerInterceptor`(경로별 한도). 넘치면 429와 `Retry-After` 헤더, 응답 본문은 `ApiResponse` 오류 코드 `TOO_MANY_REQUESTS`(`GlobalExceptionHandler`에 추가).
+  - 저장소: api가 한 대라 메모리(Caffeine으로 오래 안 쓴 버킷을 비움). 재시작하면 통이 다시 차는데, 배포 때 한 번이라 문제없다. api가 두 대 이상이 되면 공유 저장소(Bucket4j PostgreSQL 연동 또는 Redis 도입 시 Redis)로 옮긴다. 그 전엔 서버마다 따로 세서 한도가 대수만큼 커진다.
+  - 한도 값은 정하지 않는다. 공개 뒤 정상 사용 패턴(회원당 분당 요청 수)을 지표로 보고, 그 몇 배로 잡는다. 처음엔 넘쳐도 막지 않고 로그만 남기는 모드로 며칠 돌려 정상 사용자가 걸리지 않는지 본다.
+  - 테스트: 한도를 넘기면 429·`Retry-After`, 다른 회원은 영향 없음, 비로그인 요청은 앱 제한을 거치지 않음.
+  - 하지 않는 것: AWS WAF 속도 기반 규칙(월 고정 비용, ADR-004 비용 상한), 지금(로그인 전) 앱 계층 IP 제한.
 - 소셜 연결 해제 웹훅은 서명·출처 검증을 테스트로 남긴다.
 - GitHub Dependabot·secret scanning을 켠다.
 - `REVIEW.md`에 보안 체크리스트를 두고, 위험 경로 PR은 `/security-review` 결과를 PR에 남긴다.
@@ -271,7 +280,8 @@ I0030을 비롯한 식약처·공공데이터 API에는 제품 이미지가 없�
   - 별도 infra 레포는 지금 규모에 과하다.
 - Nginx 라우팅: `/api/*`·`/actuator/health`는 api 컨테이너로, 나머지(`/`)는 web(Next.js) 컨테이너로 넘긴다.
 - 기본 배포 범위(2026-11-09 정함): Nginx(위 라우팅만) + api + batch + db. web이 아직 없어서 `/`는 502가 나도 된다. 보안 그룹 80·443은 닫아 두고, 헬스 체크는 SSM으로 EC2 안에서 Nginx를 거쳐(`curl localhost/actuator/health`) 한다. batch는 초기 적재와 메모리 실측(batch 실행 중 `docker stats`·swap 피크) 때문에 함께 올린다.
-  - CloudFront를 붙일 때 한꺼번에 넣는 것: `set_real_ip_from`·`real_ip_header`, `limit_req`, `/admin` IP 제한, 보안 그룹을 CloudFront prefix list로 열기. CloudFront를 거친 요청이 있어야 제대로 걸리는지 확인할 수 있어서 미룬다.
+  - CloudFront를 붙일 때 한꺼번에 넣는 것: `set_real_ip_from`·`real_ip_header`, `limit_req`, 보안 그룹을 CloudFront prefix list로 열기. `/admin` IP 제한은 `/admin`이 생길 때 넣는다.
+  - CloudFront 캐시 동작(2026-11-18): `/api/*`와 기본(`/`)은 `UseOriginCacheControlHeaders-QueryStrings`(원본 `Cache-Control`을 따르고 없으면 캐시 안 함. `CachingOptimized`는 기본 TTL이 하루라 API에 위험), `/_next/static/*`은 `CachingOptimized`. 원본은 탄력적 IP의 퍼블릭 DNS, HTTP 80.
 - 이미지(2026-11-13): Dockerfile 하나(`ARG MODULE`)로 api·batch를 만든다. jar는 CI가 Gradle로 먼저 빌드한다. 운영 구성은 `compose.prod.yaml`, Nginx 설정은 `deploy/nginx/default.conf`.
 - 배포는 서비스 단위 교체(`docker compose pull api && docker compose up -d --no-deps api`). `docker compose down`은 배포에 쓰지 않는다.
 - CI/CD 단계: (1) 테스트·빌드·ECR 푸시 → (2) SSM으로 교체 → (3) 헬스 체크(`/actuator/health`) 실패 시 직전 태그로 자동 롤백.
