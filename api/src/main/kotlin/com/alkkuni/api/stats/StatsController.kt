@@ -2,6 +2,7 @@ package com.alkkuni.api.stats
 
 import com.alkkuni.api.common.ApiResponse
 import com.alkkuni.api.common.PUBLIC_CACHE
+import com.alkkuni.core.ingestion.entity.IngestionCursor
 import com.alkkuni.core.ingestion.repository.IngestionCursorRepository
 import com.alkkuni.core.ingredient.repository.IngredientRepository
 import com.alkkuni.core.product.enums.ProductStatus
@@ -35,20 +36,17 @@ class StatsController(
                         productCount = productRepository.countByStatusAndRawMaterialFalse(ProductStatus.ACTIVE),
                         // 성분 목록 API(/api/ingredients)가 내려주는 개수와 같다
                         ingredientCount = ingredientRepository.count(),
-                        dataDate = cursorRepository.findByIdOrNull(PRODUCT_SOURCE)?.lastCollectedDate,
+                        // 커서는 수집을 실행한 날(KST 새벽)이고, 그날 변경분은 아직 확정 전이라 다음 날 받는다.
+                        // 화면에 "이 날짜까지 반영"으로 보이도록 하루를 뺀다.
+                        dataDate = cursorRepository.findByIdOrNull(IngestionCursor.PRODUCT_SOURCE)?.lastCollectedDate?.minusDays(1),
                     ),
                 ),
             )
-
-    companion object {
-        // 제품 목록 출처(식약처 I0030). 매일 증분 수집이 커서를 옮긴다.
-        private const val PRODUCT_SOURCE = "I0030"
-    }
 }
 
 data class StatsResponse(
     val productCount: Long,
     val ingredientCount: Long,
-    // 마지막으로 받아 온 날짜. 첫 적재 전이면 null이다. 적재가 멈추면 이 날짜도 멈춰 데이터가 오래됐다는 신호가 된다.
+    // 이 날짜까지의 변경이 반영됐다(커서 - 1일). 첫 적재 전이면 null이다. 적재가 멈추면 이 날짜도 멈춰 데이터가 오래됐다는 신호가 된다.
     val dataDate: LocalDate?,
 )

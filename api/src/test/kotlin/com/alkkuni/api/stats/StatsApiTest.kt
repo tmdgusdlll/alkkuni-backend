@@ -40,7 +40,7 @@ class StatsApiTest(
     }
 
     @Test
-    fun `제품 수는 검색 목록 전체 개수와 같고 기준일은 I0030 커서 날짜다`() {
+    fun `제품 수는 검색 목록 전체 개수와 같고 기준일은 I0030 커서 전날이다`() {
         product("국내 제품")
         product("수출 제품(전량수출용)", exportOnly = true) // 목록 기본값(market=all)에 나와 센다
         product("원료 제품", rawMaterial = true) // 세지 않는다
@@ -57,7 +57,7 @@ class StatsApiTest(
             header { string("Cache-Control", "max-age=60, public") }
             jsonPath("$.data.productCount") { value(2) }
             jsonPath("$.data.ingredientCount") { value(ingredientCount) }
-            jsonPath("$.data.dataDate") { value("2026-11-20") }
+            jsonPath("$.data.dataDate") { value("2026-11-19") } // 11-20 새벽 수집은 11-19까지 반영
         }
     }
 

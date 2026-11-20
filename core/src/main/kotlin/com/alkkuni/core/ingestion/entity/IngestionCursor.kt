@@ -28,4 +28,9 @@ class IngestionCursor(
         lastCollectedDate = collectedDate
         updatedAt = now
     }
+
+    companion object {
+        // 제품 목록 출처(식약처 I0030). batch 수집 작업과 api 메인 통계 기준일이 같은 키를 본다.
+        const val PRODUCT_SOURCE = "I0030"
+    }
 }
