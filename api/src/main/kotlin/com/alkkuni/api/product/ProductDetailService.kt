@@ -10,6 +10,7 @@ import com.alkkuni.core.product.enums.ProductStatus
 import com.alkkuni.core.product.repository.ProductCategoryRepository
 import com.alkkuni.core.product.repository.ProductIngredientRepository
 import com.alkkuni.core.product.repository.ProductRepository
+import com.alkkuni.core.recall.entity.Recall
 import com.alkkuni.core.recall.repository.RecallRepository
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.stereotype.Service
@@ -30,7 +31,7 @@ class ProductDetailService(
 
         val rows = productIngredientRepository.findAllByProductIdOrderById(id)
         val ingredients = ingredientRepository.findAllById(rows.mapNotNull { it.ingredientId }.toSet()).associateBy { it.id }
-        val recalls = recallRepository.findAllByReportNoAndProductTypeOrderById(product.reportNo, HEALTH_FUNCTIONAL_FOOD)
+        val recalls = recallRepository.findAllByReportNoAndProductTypeOrderById(product.reportNo, Recall.HEALTH_FUNCTIONAL_FOOD)
 
         return product.toDetailResponse(
             brand = product.brandId?.let { brandRepository.findByIdOrNull(it) }?.toRef(),
@@ -38,10 +39,5 @@ class ProductDetailService(
             ingredients = rows.map { it.toDetailIngredient(it.ingredientId?.let(ingredients::get)) },
             recalls = recalls.map { it.toDetailRecall() },
         )
-    }
-
-    companion object {
-        // I0490 PRDLST_TYPE 값
-        private const val HEALTH_FUNCTIONAL_FOOD = "건강기능식품"
     }
 }
