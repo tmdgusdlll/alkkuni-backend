@@ -70,7 +70,10 @@ class Recall(
     var lastSeenAt: LocalDateTime = seenAt
         protected set
 
-    /** 이번 목록에 있었다. 원본 값이 고쳐졌을 수 있어 덮어쓰고, 빠졌던 건이면 다시 목록에 올린다. */
+    /**
+     * 이번 목록에 있었다. 원본 값이 고쳐졌을 수 있어 덮어쓰고, 빠졌던 건이면 다시 목록에 올린다.
+     * 등록일은 null이면 덮어쓰지 않는다. 식약처가 형식을 바꿔 읽지 못한 날 이미 저장된 날짜가 지워지지 않게 한다.
+     */
     fun seen(
         reportNo: String?,
         productName: String,
@@ -88,7 +91,7 @@ class Recall(
         this.productType = productType
         this.reason = reason
         this.expiryText = expiryText
-        this.registeredAt = registeredAt
+        if (registeredAt != null) this.registeredAt = registeredAt
         this.grade = grade
         listStatus = RecallListStatus.LISTED
         lastSeenAt = at

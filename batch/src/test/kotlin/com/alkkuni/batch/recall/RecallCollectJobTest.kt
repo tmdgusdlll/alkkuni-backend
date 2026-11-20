@@ -118,6 +118,25 @@ class RecallCollectJobTest {
         assertEquals(RecallListStatus.LISTED, stored.listStatus)
     }
 
+    @Test
+    fun `기존 행에 등록일과 등급을 채우고 등록일을 읽지 못한 날은 저장된 날짜를 지킨다`() {
+        val blank = recall("1") // V18 전에 저장돼 등록일·등급이 없는 행
+        val dated = Recall("2", null, "제품2", null, null, null, null, earlier, registeredAt = earlier, grade = "2등급")
+        givenStored(blank, dated)
+        expectPage(
+            total = 2,
+            seqs = emptyList(),
+            extraRow = """{"RTRVLDSUSE_SEQ":"1","PRDTNM":"제품1","CRET_DTM":"2026-11-03 17:34:32.3","RTRVL_GRDCD_NM":"1등급"},""" +
+                """{"RTRVLDSUSE_SEQ":"2","PRDTNM":"제품2","CRET_DTM":"20261103","RTRVL_GRDCD_NM":"2등급"}""",
+        )
+
+        job.run(DefaultApplicationArguments())
+
+        assertEquals(LocalDateTime.of(2026, 11, 3, 17, 34, 32, 300_000_000), blank.registeredAt)
+        assertEquals("1등급", blank.grade)
+        assertEquals(earlier, dated.registeredAt)
+    }
+
     private fun expectPage(total: Int, seqs: List<String>, extraRow: String? = null) {
         val rows = (seqs.map { """{"RTRVLDSUSE_SEQ":"$it","PRDTNM":"제품$it","PRDLST_REPORT_NO":""}""" } + listOfNotNull(extraRow))
             .joinToString(",")
