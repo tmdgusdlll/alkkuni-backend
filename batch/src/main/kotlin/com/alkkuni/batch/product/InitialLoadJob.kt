@@ -71,7 +71,7 @@ class InitialLoadJob(
     }
 
     companion object {
-        const val SERVICE = "I0030"
+        const val SERVICE = IngestionCursor.PRODUCT_SOURCE
         private val log = LoggerFactory.getLogger(InitialLoadJob::class.java)
     }
 }

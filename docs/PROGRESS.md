@@ -17,6 +17,8 @@
 
 체크 안 된 첫 항목이 다음 작업이다. 병렬 레인은 코드가 겹치지 않아 동시에 진행할 수 있다.
 
+**사이트 공개 뒤 순서 (2026-11-18 정함, 작업 로그)**: 메인 통계·소식 API → 제품 이미지·구매 링크 1차 → 백업·복구 훈련(5단계에서 당김) → 인증(3단계) → 계측 → 검색 목록 쿼리 개선. 아래 단계 목록과 순서가 다르면 이 줄을 따른다.
+
 - [ ] **1단계: 정규화 마무리** ‖ 기본 배포
   - [x] 섭취방법 파싱, 분모 확인 (PR #15)
   - [x] 1일 함량, 단위 통일, 섭취방법으로 원료 판정 (PR #16)
@@ -41,12 +43,13 @@
   - [x] 성분별 제품 목록 API(JDSL, 성분 AND·제외·제형·함량 범위, 주 단위 정렬) + 성분 목록 API (PR #23)
   - [x] 1일 기준값: 기준값·상한 V11·상한 2배 초과 판정(PR #24), "기준 충족" 필터(PR #25), 응답의 기준 대비 %·충족·상한 초과 경고와 기능성 원료 상한 V12
   - [x] **다음**: ~~브랜드 사전(V13, 연결만)~~ → ~~응답 `brand`·검색 별칭·목록 브랜드 필터·브랜드 목록 API~~ → ~~수출용 제품 표시·정렬·필터(V14)~~ → ~~기능성 카테고리(판정·V15·`link-categories` → 목록 `category=` 필터·카테고리 목록 API·응답 `categories`)~~. 순서는 2026-11-08에 바꿨다(작업 로그). 수출용은 2026-11-13에 끼워 넣었다
-  - [ ] ~~메인 인기 성분 비교(고정 목록)~~(백엔드 작업 없음: 프론트가 기존 성분별 목록 API로 고정 6개를 띄움, 2026-11-12 PLANNING.md "메인 인기 성분"), 제품 이미지 1차(V18 `product.image_url` 컬럼·응답 `imageUrl`, NULL이면 프론트가 제형 아이콘, 인기 제품 몇 개만 SQL로 넣음. 등록·수정 API는 4단계 관리자로 미룸, 2026-11-16), 구매 링크 1차(ADR-008. `ShoppingLink` 테이블·응답 링크·대가성 문구, 인기 제품 링크만 SQL로 넣음. 등록·수정 API는 4단계 관리자로 미룸, 2026-11-16). PLANNING.md MVP 표에 있는데 작업 순서에서 빠져 있었다(2026-11-07)
-  - [ ] 메인 통계 API(`GET /api/stats`: 제품 수·기준일)와 소식 목록 API(`GET /api/news`: 회수부터). 프론트 메인이 기다리는 것. PLANNING.md "메인 통계·소식 API"
+  - [ ] ~~메인 인기 성분 비교(고정 목록)~~(백엔드 작업 없음: 프론트가 기존 성분별 목록 API로 고정 6개를 띄움, 2026-11-12 PLANNING.md "메인 인기 성분"), 제품 이미지 1차(V19 `product.image_url` 컬럼·응답 `imageUrl`, NULL이면 프론트가 제형 아이콘, 인기 제품 몇 개만 SQL로 넣음. 등록·수정 API는 4단계 관리자로 미룸, 2026-11-16), 구매 링크 1차(ADR-008. `ShoppingLink` 테이블·응답 링크·대가성 문구, 인기 제품 링크만 SQL로 넣음. 등록·수정 API는 4단계 관리자로 미룸, 2026-11-16). PLANNING.md MVP 표에 있는데 작업 순서에서 빠져 있었다(2026-11-07)
+  - [ ] ~~메인 통계 API(`GET /api/stats`: 제품 수·성분 수·기준일)~~(2026-11-20)와 소식 목록 API(`GET /api/news`: 건강기능식품 회수부터, 등록일·등급 V18). 프론트 메인이 기다리는 것. PLANNING.md "메인 통계·소식 API"
   - [ ] 인기 순위(MVP 이후, 순서 미정): 날짜별 조회 카운트·`GET /api/home/popular`(조회 시 7일 집계 + CloudFront 60초 캐시, 배치 없음)·k6로 카운트 성능 측정 → 결과로 DB 유지·Redis 도입 결정. PLANNING.md "메인 인기 성분" 2·3
   - [x] ‖ batch 실행 기록(`job_run`, V17): 작업마다 시작·끝·성공 여부·처리 건수·오류를 한 줄씩 남긴다. 계측·알림(아래)의 데이터 출처
   - [ ] ‖ 계측(기본 배포 메모리 실측 뒤): Micrometer Prometheus·JSON 구조화 로그, 모니터링 EC2(Grafana·Prometheus·Loki, Tailscale 접속), 서비스·서버 대시보드. PLANNING.md "모니터링·알림"
 - [ ] **3단계: 인증 + 서랍** ‖ 회수 매칭(batch)
+  - 먼저: 백업(`pg_dump` → S3, 매일 cron, 30일 보관)·복구 훈련(빈 Postgres에 복원, 행 수 대조, 걸린 시간 기록). 5단계에서 당김(2026-11-18), PLANNING.md "백업"
   - 소셜 로그인(웹훅 포함, 세션 + `spring-session-jdbc`), `Member.role`·감사 로그 → 서랍, 마이페이지
   - 회원 단위 호출 제한(Bucket4j, PLANNING.md "보안 운영" 2겹): 서랍 쓰기·알림 설정·이메일 발송 요청부터. 처음엔 로그만 남기는 모드로 한도 확인
   - 로그인이 운영에서 동작하면 검색 엔진 공개(프론트 PROGRESS "검색 엔진 공개")
@@ -54,7 +57,7 @@
   - Outbox + SES 발송(서랍과 회수 매칭이 모두 있어야 함)
   - 관리자: 파싱 검수, 회수 매칭 검수, `collect_request` 수집 현황·수동 실행, 제품 이미지 URL·구매 링크 등록·수정(2단계에서 저장 구조만 만든 것). 화면은 Next.js `/admin`(아이패드 가로 기준)
 - [ ] **5단계: 공개 배포**
-  - CD 자동화(헬스 체크 실패 시 롤백), 백업(`pg_dump` → S3)·복구 훈련, 보안 체크리스트, 알림(Grafana Alerting → Slack ★ 항목, CloudWatch는 두 EC2 상태 검사만 → SNS → Chatbot → Slack)
+  - CD 자동화(헬스 체크 실패 시 롤백), ~~백업·복구 훈련~~(3단계 앞으로 당김), 보안 체크리스트, 알림(Grafana Alerting → Slack ★ 항목, CloudWatch는 두 EC2 상태 검사만 → SNS → Chatbot → Slack)
   - 공개 후 1~2주: 사용자·비즈니스 대시보드
 
 ## 다음 할 일
@@ -100,20 +103,19 @@
    - 네이버는 동작하는 서비스 URL로 검수를 받아야 해서 3단계(인증) 뒤에야 신청할 수 있다. 공개가 늦어질 수 있는 유일한 외부 대기
    - 인증 PR에서: CloudFront → Nginx → API를 거치면 Spring이 리다이렉트 URI를 http나 EC2 주소로 만들 수 있다. `forward-headers-strategy` 또는 운영 `redirect-uri` 고정
 5. 기본 배포 뒤 남은 것(2026-11-18). 기본 배포는 "완료"로 옮겼다
-   - 매일 수집 cron(`incremental` UTC 19:00, `recall` 19:30)은 EC2 root crontab에 직접 등록한다(`docs/guide/aws-setup.md` 10단계, 로컬 전용). 검증: 등록 다음 날 아침 `logs/cron-*.log`와 `ingestion_cursor`가 어제 날짜로 옮겨졌는지
-     - 등록할 두 줄(가이드가 로컬 전용이라 원문을 여기에도 남긴다):
-       `0 19 * * * bash /opt/alkkuni/deploy/run-job.sh incremental >> /opt/alkkuni/logs/cron-incremental.log 2>&1`
-       `30 19 * * * bash /opt/alkkuni/deploy/run-job.sh recall >> /opt/alkkuni/logs/cron-recall.log 2>&1`
    - batch CPU 제한(`cpus:`)은 보류(PR #42 리뷰). 적재 중 검색 타임아웃은 batch와 db가 함께 바빠서였고, batch만 막아도 batch가 db에 시키는 쿼리 부하는 그대로라 효과가 불확실하다. 매일 증분은 몇 분짜리다. 낮에 큰 작업을 돌리게 되면(4단계 관리자 수동 실행) `cpus` 제한 전후 검색 시간을 재서 정한다
    - jar 레이어 분리 전후 ECR push 크기 측정(PR #36에서 미룸)
    - 쓰지 않는 기본 VPC(172.31) 삭제(콘솔)
-   - (배포 뒤) 다음 날 아침 `SELECT * FROM job_run ORDER BY started_at DESC`로 `incremental`·`recall`이 SUCCEEDED인지, 건수가 로그와 같은지 본다
 6. 1일 기준값 나머지(2026-11-09 계획)
    - 상한을 넣지 않은 기능성 원료: 프로바이오틱스 수·폴리감마글루탐산(개별인정형이 고시 최고량을 정상으로 넘음), 실리마린·포스파티딜세린·크레아틴(고시가 고정량), 식이섬유(원료마다 최고량이 다름). 개별인정형 원료 최고량을 따로 수집하게 되면 다시 본다
    - 기준값 보류 성분: 조단백질(대두단백 외 원료도 같은 이름), 총 플라보노이드(프로폴리스, 충족 41%·중앙값 17mg이라 용도별 하한 확인 필요), 로사빈·소포리코사이드(고시 값이 추출물 양). `docs/daily-reference.csv`의 `note`에 이유
 
 ## 완료
 
+- [x] 매일 수집 cron 운영 확인: 2026-11-20 새벽(UTC 11-19 19:00·19:30) `incremental`·`recall` 모두 `job_run` SUCCEEDED, 건수가 로그와 같고 I0030 커서가 2026-11-20으로 옮겨짐. 측정값은 작업 로그 2026-11-20
+  - EC2 root crontab 두 줄(`docs/guide/aws-setup.md` 10단계가 로컬 전용이라 원문을 여기 남긴다):
+    `0 19 * * * bash /opt/alkkuni/deploy/run-job.sh incremental >> /opt/alkkuni/logs/cron-incremental.log 2>&1`
+    `30 19 * * * bash /opt/alkkuni/deploy/run-job.sh recall >> /opt/alkkuni/logs/cron-recall.log 2>&1`
 - [x] batch 실행 기록 `job_run`(V17): `JobLock.withLock`이 모든 작업의 실행을 RUNNING → SUCCEEDED/FAILED로 남기고, 수집 작업 3개(`initial-load`·`incremental`·`recall`)는 처리·변경 건수도 남긴다. 성공·예외·잠금 실패·Error·연결 끊김 테스트 (PR #43, 2026-11-18)
 - [x] 기본 배포: Dockerfile·운영 compose·Nginx, `ci-cd.yml` 배포 job(OIDC, `main`만), `deploy.sh`(Parameter Store로 `.env`, healthy 확인, `.prev/` 자동 롤백), S3 `RawStore`, 운영 첫 적재 46,401건과 메모리 실측, `ANALYZE product` 단축(V16), api 연결 JIT 끔, 기본 배포 마무리 (PR #37~#42, 2026-11-16~18). 측정값은 작업 로그 2026-11-18
 - [x] 수출용 제품 판정(`ExportName`, V14 `export_only`, `alkkuni.job=mark-export`, 로컬 2,608개), 응답 `exportOnly`, 검색·성분별 목록 기본 정렬에서 국내 제품 뒤로와 `market` 필터, 브랜드 목록 국내·수출 수, 로컬 실제 데이터로 확인 (PR #33, 2026-11-13)
@@ -164,7 +166,22 @@
 
 ## 작업 로그
 
-### 2026-11-18 (CloudFront·도메인 연결, 사이트 공개)
+### 2026-11-20 (매일 수집 cron 첫 정상 실행, 메인 통계 API)
+- 11-18 cron은 `logs/` 디렉터리가 없어 리다이렉트에서 실패해 작업이 시작도 못 했다(`job_run`에 기록 없음). 디렉터리를 만든 뒤 첫 실행(11-20 새벽):
+  - `incremental`: CHNG_DT=2026-11-15부터(커서 11-16 − 1일, 빠진 날짜까지 한 번에) 259건 받음, 바뀐 제품 179건, 4.5초. 커서 2026-11-20
+  - `recall`: 387건 받음, 새 회수 4·목록에서 빠짐 6·다시 올라옴 0(`changed_count` 10), 2.2초
+  - 커서 `updated_at`은 앱 `Clock`(Asia/Seoul) 기준이라 `job_run`(timestamptz, UTC 표시)과 9시간 차이로 보인다. 같은 시점이다
+- 메인 통계 API(`GET /api/stats`): 제품 수는 검색 목록과 같은 조건(ACTIVE·원료 제외·국내+수출), 성분 수는 성분 목록 API와 같은 사전 전체, 기준일은 I0030 커서 - 1일("이 날짜까지 반영", PR #47 리뷰). 테이블·배치 추가 없이 읽기만 한다. 소식 API는 다음 PR(PLANNING.md "메인 통계·소식 API"에 결정 기록). 소식이 V18(`recall` 등록일·등급)을 쓰므로 제품 이미지 마이그레이션은 V19로 밀린다
+
+### 2026-11-18 (사이트 공개 뒤 작업 순서)
+- 메인 통계·소식 API → 제품 이미지·구매 링크 1차 → 백업·복구 훈련 → 인증 → 계측 → 검색 목록 쿼리 개선으로 정했다.
+  - 통계·소식은 프론트 메인이 기다리는 작은 조회 API라 먼저. 이미지·구매 링크는 저장 구조·응답 필드·수동 등록까지만(쿠팡 파트너스 API 자동 매칭은 최종 승인 뒤, PLANNING.md "제품 이미지").
+  - 백업을 5단계에서 인증 앞으로 당겼다. 회원·서랍은 식약처에서 다시 받을 수 없는 첫 데이터라, 생기기 전에 백업과 복구 훈련이 있어야 한다.
+  - 인증을 계측보다 앞에 둔 건 네이버 검수(동작하는 서비스로 2~3 영업일~1주)를 일찍 시작하려고. 그동안 알림이 없으니 매일 아침 점검(노션 "운영 점검 체크리스트")으로 대신한다. 계측은 4단계(회수 알림 발송)보다는 반드시 앞이다(발송 실패를 모르는 채 메일을 보내지 않는다).
+  - 쿼리 개선을 계측 뒤에 둔 건 운영 지표로 개선 전후를 숫자로 비교하려고.
+- AWS Budgets 월 예산 알림을 설정했다(사용자, 2026-11-18).
+
+### 2026-11-18 (CloudFront·도메인 연결, 사이트 공개, PR #46)
 - CloudFront 배포 `alkkuni-web`(무료 요금제)를 만들고 보안 그룹 80을 `com.amazonaws.global.cloudfront.origin-facing`(IPv4) prefix list로 열고, 배포 화면의 "도메인을 CloudFront로 라우팅"으로 Route 53 A·AAAA 별칭을 만들었다. 동작 3개는 PLANNING.md "배포" 표대로(`-QueryStrings` 포함 확인). 원본 HTTP 80, 기본 타임아웃, 압축 켬, 보안 정책 TLSv1.2_2021.
 - 운영 확인(로컬 맥, 휴대폰 데이터):
   - 화면·검색·상세 이동 정상, 휴대폰 데이터 접속 정상, `https://kuromi.click` `HTTP/2 200`
