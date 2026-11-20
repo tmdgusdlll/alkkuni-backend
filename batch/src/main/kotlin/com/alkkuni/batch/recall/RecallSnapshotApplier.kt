@@ -50,6 +50,8 @@ class RecallSnapshotApplier(private val recallRepository: RecallRepository) {
                     reason = row.reason,
                     expiryText = row.expiryText,
                     seenAt = at,
+                    registeredAt = row.registeredAt,
+                    grade = row.grade,
                 )
             } else {
                 if (found.listStatus == RecallListStatus.DELISTED) relisted++
@@ -60,6 +62,8 @@ class RecallSnapshotApplier(private val recallRepository: RecallRepository) {
                     productType = row.productType,
                     reason = row.reason,
                     expiryText = row.expiryText,
+                    registeredAt = row.registeredAt,
+                    grade = row.grade,
                     at = at,
                 )
             }

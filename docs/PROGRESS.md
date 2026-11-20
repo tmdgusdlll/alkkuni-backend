@@ -44,7 +44,8 @@
   - [x] 1일 기준값: 기준값·상한 V11·상한 2배 초과 판정(PR #24), "기준 충족" 필터(PR #25), 응답의 기준 대비 %·충족·상한 초과 경고와 기능성 원료 상한 V12
   - [x] **다음**: ~~브랜드 사전(V13, 연결만)~~ → ~~응답 `brand`·검색 별칭·목록 브랜드 필터·브랜드 목록 API~~ → ~~수출용 제품 표시·정렬·필터(V14)~~ → ~~기능성 카테고리(판정·V15·`link-categories` → 목록 `category=` 필터·카테고리 목록 API·응답 `categories`)~~. 순서는 2026-11-08에 바꿨다(작업 로그). 수출용은 2026-11-13에 끼워 넣었다
   - [ ] ~~메인 인기 성분 비교(고정 목록)~~(백엔드 작업 없음: 프론트가 기존 성분별 목록 API로 고정 6개를 띄움, 2026-11-12 PLANNING.md "메인 인기 성분"), 제품 이미지 1차(V19 `product.image_url` 컬럼·응답 `imageUrl`, NULL이면 프론트가 제형 아이콘, 인기 제품 몇 개만 SQL로 넣음. 등록·수정 API는 4단계 관리자로 미룸, 2026-11-16), 구매 링크 1차(ADR-008. `ShoppingLink` 테이블·응답 링크·대가성 문구, 인기 제품 링크만 SQL로 넣음. 등록·수정 API는 4단계 관리자로 미룸, 2026-11-16). PLANNING.md MVP 표에 있는데 작업 순서에서 빠져 있었다(2026-11-07)
-  - [ ] ~~메인 통계 API(`GET /api/stats`: 제품 수·성분 수·기준일)~~(2026-11-20)와 소식 목록 API(`GET /api/news`: 건강기능식품 회수부터, 등록일·등급 V18). 프론트 메인이 기다리는 것. PLANNING.md "메인 통계·소식 API"
+  - [x] 메인 통계 API(`GET /api/stats`: 제품 수·성분 수·기준일, PR #47)와 소식 목록 API(`GET /api/news`: 건강기능식품 회수부터, 등록일·등급 V18) (2026-11-20). 프론트 메인이 기다리는 것. PLANNING.md "메인 통계·소식 API"
+    - [ ] 배포 다음 날: `SELECT count(*) FROM recall WHERE list_status='LISTED' AND registered_at IS NULL` = 0
   - [ ] 인기 순위(MVP 이후, 순서 미정): 날짜별 조회 카운트·`GET /api/home/popular`(조회 시 7일 집계 + CloudFront 60초 캐시, 배치 없음)·k6로 카운트 성능 측정 → 결과로 DB 유지·Redis 도입 결정. PLANNING.md "메인 인기 성분" 2·3
   - [x] ‖ batch 실행 기록(`job_run`, V17): 작업마다 시작·끝·성공 여부·처리 건수·오류를 한 줄씩 남긴다. 계측·알림(아래)의 데이터 출처
   - [ ] ‖ 계측(기본 배포 메모리 실측 뒤): Micrometer Prometheus·JSON 구조화 로그, 모니터링 EC2(Grafana·Prometheus·Loki, Tailscale 접속), 서비스·서버 대시보드. PLANNING.md "모니터링·알림"
@@ -172,6 +173,9 @@
   - `recall`: 387건 받음, 새 회수 4·목록에서 빠짐 6·다시 올라옴 0(`changed_count` 10), 2.2초
   - 커서 `updated_at`은 앱 `Clock`(Asia/Seoul) 기준이라 `job_run`(timestamptz, UTC 표시)과 9시간 차이로 보인다. 같은 시점이다
 - 메인 통계 API(`GET /api/stats`): 제품 수는 검색 목록과 같은 조건(ACTIVE·원료 제외·국내+수출), 성분 수는 성분 목록 API와 같은 사전 전체, 기준일은 I0030 커서 - 1일("이 날짜까지 반영", PR #47 리뷰). 테이블·배치 추가 없이 읽기만 한다. 소식 API는 다음 PR(PLANNING.md "메인 통계·소식 API"에 결정 기록). 소식이 V18(`recall` 등록일·등급)을 쓰므로 제품 이미지 마이그레이션은 V19로 밀린다
+- 소식 목록 API(`GET /api/news`): V18로 `recall.registered_at`(CRET_DTM)·`grade`(RTRVL_GRDCD_NM 원문)를 추가하고 회수 수집이 덮어쓴다. 건강기능식품만, DELISTED 포함, `registered_at DESC NULLS LAST, id DESC`, 페이지(최대 50건), 60초 캐시. 항목은 `type`(RECALL)·제목(제품명)·제조사·사유·등급·날짜(등록일의 날짜)
+  - CRET_DTM은 소수점 자릿수가 1~6자리로 섞여 온다(로컬 원본 798건). ISO 형식(0~9자리)으로 읽고, 읽지 못하면 수집을 멈추지 않고 null로 둔다. 배포 다음 날 LISTED 행의 null 개수로 확인한다
+  - `건강기능식품` 유형 상수를 `Recall.HEALTH_FUNCTIONAL_FOOD`(core)로 옮겨 상세 API와 소식 API가 같이 쓴다
 
 ### 2026-11-18 (사이트 공개 뒤 작업 순서)
 - 메인 통계·소식 API → 제품 이미지·구매 링크 1차 → 백업·복구 훈련 → 인증 → 계측 → 검색 목록 쿼리 개선으로 정했다.

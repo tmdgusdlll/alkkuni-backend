@@ -23,6 +23,8 @@ class Recall(
     reason: String?,
     expiryText: String?,
     seenAt: LocalDateTime,
+    registeredAt: LocalDateTime? = null,
+    grade: String? = null,
 ) {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -48,6 +50,14 @@ class Recall(
     var expiryText: String? = expiryText
         protected set
 
+    // 식약처 등록 시각(CRET_DTM). 소식 목록 정렬·날짜에 쓴다
+    var registeredAt: LocalDateTime? = registeredAt
+        protected set
+
+    // 회수 등급 원문(1·2·3등급, 자율회수 등). 식약처가 새 값을 내도 수집이 깨지지 않게 enum으로 두지 않는다
+    var grade: String? = grade
+        protected set
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     var listStatus: RecallListStatus = RecallListStatus.LISTED
@@ -68,6 +78,8 @@ class Recall(
         productType: String?,
         reason: String?,
         expiryText: String?,
+        registeredAt: LocalDateTime?,
+        grade: String?,
         at: LocalDateTime,
     ) {
         this.reportNo = reportNo
@@ -76,8 +88,15 @@ class Recall(
         this.productType = productType
         this.reason = reason
         this.expiryText = expiryText
+        this.registeredAt = registeredAt
+        this.grade = grade
         listStatus = RecallListStatus.LISTED
         lastSeenAt = at
+    }
+
+    companion object {
+        // I0490 PRDLST_TYPE 값. 다른 식품 회수도 함께 오므로 서비스는 이 유형만 보여 준다
+        const val HEALTH_FUNCTIONAL_FOOD = "건강기능식품"
     }
 
     /** 이번 목록에 없었다. 지우지 않고 상태만 바꾼다. */
