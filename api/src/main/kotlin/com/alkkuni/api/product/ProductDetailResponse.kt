@@ -5,7 +5,10 @@ import com.alkkuni.api.category.CategoryRef
 import com.alkkuni.core.ingredient.entity.Ingredient
 import com.alkkuni.core.product.entity.Product
 import com.alkkuni.core.product.entity.ProductIngredient
+import com.alkkuni.core.product.entity.ShoppingLink
 import com.alkkuni.core.product.enums.BasisCheck
+import com.alkkuni.core.product.enums.LinkStore
+import com.alkkuni.core.product.enums.LinkType
 import com.alkkuni.core.product.enums.ParseStatus
 import com.alkkuni.core.recall.entity.Recall
 import com.alkkuni.core.recall.enums.RecallListStatus
@@ -22,6 +25,8 @@ data class ProductDetailResponse(
     // 수출용 제품(제품명 표기로 판정). 화면은 "수출용" 배지를 단다. 기본 정렬에서 국내 제품 뒤에 온다.
     val exportOnly: Boolean,
     val form: String?,
+    // 제품 이미지 URL. 없으면 null이고 화면은 제형(form) 아이콘을 보여준다.
+    val imageUrl: String?,
     val reportedOn: LocalDate?,
     val intakeMethod: String?,
     val functionalMaterials: String?,
@@ -37,6 +42,15 @@ data class ProductDetailResponse(
     val ingredients: List<DetailIngredient>,
     // 신고번호가 정확히 같은 회수만. 신고번호가 없거나 다른 회수는 회수 매칭(검수) 뒤에 붙는다.
     val recalls: List<DetailRecall>,
+    // 구매 링크 대표 하나. 없으면 null(대부분). 화면은 store에 맞는 대가성 문구를 버튼 근처에 단다.
+    // 수수료는 순위·노출에 쓰지 않는다(링크 유무로 정렬하지 않음).
+    val purchaseLink: PurchaseLink?,
+)
+
+data class PurchaseLink(
+    val store: LinkStore,
+    val type: LinkType,
+    val url: String,
 )
 
 data class DetailIngredient(
@@ -73,7 +87,7 @@ data class DetailRecall(
     val listStatus: RecallListStatus,
 )
 
-fun Product.toDetailResponse(brand: BrandRef?, categories: List<CategoryRef>, ingredients: List<DetailIngredient>, recalls: List<DetailRecall>) = ProductDetailResponse(
+fun Product.toDetailResponse(brand: BrandRef?, categories: List<CategoryRef>, ingredients: List<DetailIngredient>, recalls: List<DetailRecall>, purchaseLink: PurchaseLink?) = ProductDetailResponse(
     id = requireNotNull(id),
     reportNo = reportNo,
     name = name,
@@ -81,6 +95,7 @@ fun Product.toDetailResponse(brand: BrandRef?, categories: List<CategoryRef>, in
     brand = brand,
     exportOnly = exportOnly,
     form = form,
+    imageUrl = imageUrl,
     reportedOn = reportedOn,
     intakeMethod = intakeMethod,
     functionalMaterials = functionalMaterials,
@@ -91,7 +106,10 @@ fun Product.toDetailResponse(brand: BrandRef?, categories: List<CategoryRef>, in
     parseStatus = parseStatus,
     ingredients = ingredients,
     recalls = recalls,
+    purchaseLink = purchaseLink,
 )
+
+fun ShoppingLink.toPurchaseLink() = PurchaseLink(store = store, type = type, url = url)
 
 fun ProductIngredient.toDetailIngredient(ingredient: Ingredient?) = DetailIngredient(
     ingredientId = ingredientId,

@@ -127,6 +127,10 @@ class Product(
     var brandId: Long? = null
         protected set
 
+    // 제품 이미지 URL(V19). 1차는 운영자가 SQL로 넣고, 수집(I0030)은 건드리지 않는다. NULL이면 화면이 제형 아이콘을 쓴다.
+    var imageUrl: String? = null
+        protected set
+
     // 수출용 제품(ExportName, 제품명 표기로 판정). 이름이 정해질 때 함께 계산한다.
     @Column(nullable = false)
     var exportOnly: Boolean = ExportName.isExportOnly(name)

@@ -78,6 +78,7 @@ data class ProductExploreRow(
     val brandId: Long?,
     val exportOnly: Boolean,
     val functionalMaterials: String?,
+    val imageUrl: String?,
 )
 
 /**
@@ -109,6 +110,7 @@ class ProductExploreRepository(
                     path(Product::brandId),
                     path(Product::exportOnly),
                     path(Product::functionalMaterials),
+                    path(Product::imageUrl),
                 ).from(entity(Product::class))
                     .whereAnd(*predicates(cond))
                     .orderBy(

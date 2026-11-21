@@ -62,6 +62,7 @@ data class ProductSearchRow(
     val parseStatus: ParseStatus,
     val brandId: Long?,
     val exportOnly: Boolean,
+    val imageUrl: String?,
 )
 
 /**
@@ -101,7 +102,7 @@ class ProductSearchRepository(private val jdbc: JdbcClient) {
         }
         val sql = """
             ${hits(cond)}
-            SELECT p.id, p.name, p.manufacturer, p.form, p.reported_on, p.basis_check, p.parse_status, p.brand_id, p.export_only, a.daily_amount, a.daily_unit
+            SELECT p.id, p.name, p.manufacturer, p.form, p.reported_on, p.basis_check, p.parse_status, p.brand_id, p.export_only, p.image_url, a.daily_amount, a.daily_unit
             FROM hit p
             $amount
             -- 수출용 제품(V14)은 어느 정렬이든 국내 제품 뒤다.
@@ -150,7 +151,7 @@ class ProductSearchRepository(private val jdbc: JdbcClient) {
         )
         return """
             WITH hit AS (
-                SELECT p.id, p.name, p.manufacturer, p.form, p.reported_on, p.basis_check, p.parse_status, p.brand_id, p.export_only,
+                SELECT p.id, p.name, p.manufacturer, p.form, p.reported_on, p.basis_check, p.parse_status, p.brand_id, p.export_only, p.image_url,
                        bool_or(h.text_match) AS text_match
                 FROM (${sources.joinToString(" UNION ALL ")}) h
                 JOIN product p ON p.id = h.id
@@ -185,5 +186,6 @@ class ProductSearchRepository(private val jdbc: JdbcClient) {
         parseStatus = ParseStatus.valueOf(getString("parse_status")),
         brandId = getObject("brand_id", Long::class.javaObjectType),
         exportOnly = getBoolean("export_only"),
+        imageUrl = getString("image_url"),
     )
 }

@@ -4,8 +4,10 @@ import com.alkkuni.core.product.ExportName
 import org.hamcrest.Matchers.contains
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.jdbc.core.JdbcTemplate
@@ -92,6 +94,39 @@ class ProductDetailApiTest(
     }
 
     @Test
+    fun `이미지와 구매 링크가 없으면 null이다`() {
+        val id = product("아연")
+
+        mvc.get("/api/products/$id").andExpect {
+            jsonPath("$.data.imageUrl") { value(null as Any?) }
+            jsonPath("$.data.purchaseLink") { value(null as Any?) }
+        }
+    }
+
+    @Test
+    fun `이미지와 대표 구매 링크를 붙인다 - 상세 링크가 검색 링크보다 먼저, 같으면 최근 확인한 것`() {
+        val id = product("아연").also { setImage(it, "https://image.example.com/a.jpg") }
+        link(id, "SEARCH", "https://www.coupang.com/np/search?q=a", "2026-11-21 10:00")
+        link(id, "DETAIL", "https://link.coupang.com/old", "2026-11-01 10:00")
+        link(id, "DETAIL", "https://link.coupang.com/new", "2026-11-20 10:00")
+
+        mvc.get("/api/products/$id").andExpect {
+            jsonPath("$.data.imageUrl") { value("https://image.example.com/a.jpg") }
+            jsonPath("$.data.purchaseLink.store") { value("COUPANG") }
+            jsonPath("$.data.purchaseLink.type") { value("DETAIL") }
+            jsonPath("$.data.purchaseLink.url") { value("https://link.coupang.com/new") }
+        }
+    }
+
+    @Test
+    fun `https가 아닌 링크·이미지는 DB가 받지 않는다`() {
+        val id = product("아연")
+
+        assertThrows<DataIntegrityViolationException> { link(id, "DETAIL", "javascript:alert(1)", "2026-11-21 10:00") }
+        assertThrows<DataIntegrityViolationException> { setImage(id, "http://image.example.com/a.jpg") }
+    }
+
+    @Test
     fun `사전에 연결된 성분은 사전 표시명을 쓴다`() {
         val id = product("A")
         ingredient(id, "아연", "8", rawName = "아연(Zn)")
@@ -173,6 +208,17 @@ class ProductDetailApiTest(
         mvc.get("/api/products/compare").andExpect {
             status { isBadRequest() }
         }
+    }
+
+    private fun setImage(productId: Long, url: String) {
+        jdbc.update("UPDATE product SET image_url = ? WHERE id = ?", url, productId)
+    }
+
+    private fun link(productId: Long, type: String, url: String, checkedAt: String) {
+        jdbc.update(
+            "INSERT INTO shopping_link (product_id, store, type, url, checked_at) VALUES (?, 'COUPANG', ?, ?, ?::timestamp)",
+            productId, type, url, checkedAt,
+        )
     }
 
     private fun linkBrand(productId: Long, brandName: String) {

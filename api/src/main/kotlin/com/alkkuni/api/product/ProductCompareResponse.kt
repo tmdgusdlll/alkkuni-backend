@@ -25,6 +25,8 @@ data class CompareProduct(
     // 수출용 제품(제품명 표기로 판정). 화면은 "수출용" 배지를 단다. 기본 정렬에서 국내 제품 뒤에 온다.
     val exportOnly: Boolean,
     val form: String?,
+    // 제품 이미지 URL. 없으면 null이고 화면은 제형(form) 아이콘을 보여준다.
+    val imageUrl: String?,
     // 기능성 카테고리(FunctionalCategory 순서). 없으면 빈 목록
     val categories: List<CategoryRef>,
     // DAILY·PER_SERVING만 "1일 기준", 나머지는 "표시 기준량"으로 보여준다(검색 API와 같은 규칙).
@@ -73,6 +75,7 @@ fun Product.toCompareProduct(brand: BrandRef?, categories: List<CategoryRef>) = 
     brand = brand,
     exportOnly = exportOnly,
     form = form,
+    imageUrl = imageUrl,
     categories = categories,
     basisCheck = basisCheck,
     parseStatus = parseStatus,

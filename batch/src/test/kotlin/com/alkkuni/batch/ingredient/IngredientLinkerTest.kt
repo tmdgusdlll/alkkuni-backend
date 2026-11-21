@@ -48,7 +48,7 @@ class IngredientLinkerTest(
 
     @BeforeEach
     fun clean() {
-        jdbc.execute("TRUNCATE product, product_ingredient, product_category")
+        jdbc.execute("TRUNCATE product, product_ingredient, product_category, shopping_link")
     }
 
     // 사전이 생기기 전에 적재된 상태를 SQL로 만들고, 다시 연결하면 적재 때와 같은 결과가 되는지 본다.
