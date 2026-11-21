@@ -345,6 +345,15 @@ class ProductExploreApiTest(
     }
 
     @Test
+    fun `제품 이미지 URL을 붙인다`() {
+        product("아연 골드").also { has(it, "아연", "30"); setImage(it, "https://image.example.com/a.jpg") }
+
+        mvc.get("/api/products/explore") { param("ingredient", "${id("아연")}") }.andExpect {
+            jsonPath("$.data.items[0].imageUrl") { value("https://image.example.com/a.jpg") }
+        }
+    }
+
+    @Test
     fun `카테고리만 고르면 그 기능성 제품 전체를 최신순으로 내고 성분 열은 비어 있다`() {
         val old = product("A", reportedOn = LocalDate.of(2020, 1, 1), functionalMaterials = "루테인(고시형)").also { categorize(it, "EYE") }
         val new = product("B", reportedOn = LocalDate.of(2026, 1, 1)).also { categorize(it, "EYE", "FATIGUE") }
@@ -437,6 +446,10 @@ class ProductExploreApiTest(
 
     private fun linkBrand(productId: Long, brandName: String) {
         jdbc.update("UPDATE product SET brand_id = (SELECT id FROM brand WHERE name = ?) WHERE id = ?", brandName, productId)
+    }
+
+    private fun setImage(productId: Long, url: String) {
+        jdbc.update("UPDATE product SET image_url = ? WHERE id = ?", url, productId)
     }
 
     private fun product(

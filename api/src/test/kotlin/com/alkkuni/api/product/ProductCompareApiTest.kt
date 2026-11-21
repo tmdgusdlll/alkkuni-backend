@@ -91,6 +91,16 @@ class ProductCompareApiTest(
     }
 
     @Test
+    fun `제품 이미지 URL을 붙이고 없으면 null이다`() {
+        val a = product("아연 A").also { ingredient(it, "아연", "8"); setImage(it, "https://image.example.com/a.jpg") }
+        val b = product("아연 B").also { ingredient(it, "아연", "8") }
+
+        mvc.get("/api/products/compare") { param("ids", "$a,$b") }.andExpect {
+            jsonPath("$.data.products[*].imageUrl") { value(contains("https://image.example.com/a.jpg", null)) }
+        }
+    }
+
+    @Test
     fun `함량 칸마다 기준값 판정을 붙인다`() {
         // 아연 기준 8.5mg, 상한 35mg. 상세·목록 API와 같은 Ingredient 판정을 쓴다
         val a = product("A").also { ingredient(it, "아연", "12") }
@@ -213,6 +223,10 @@ class ProductCompareApiTest(
 
     private fun linkBrand(productId: Long, brandName: String) {
         jdbc.update("UPDATE product SET brand_id = (SELECT id FROM brand WHERE name = ?) WHERE id = ?", brandName, productId)
+    }
+
+    private fun setImage(productId: Long, url: String) {
+        jdbc.update("UPDATE product SET image_url = ? WHERE id = ?", url, productId)
     }
 
     private fun product(

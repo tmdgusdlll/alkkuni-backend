@@ -295,6 +295,16 @@ class ProductSearchApiTest(
     }
 
     @Test
+    fun `제품 이미지 URL을 붙이고 없으면 null이다`() {
+        product("유산균 골드", reportedOn = LocalDate.of(2026, 1, 1)).also { setImage(it, "https://image.example.com/a.jpg") }
+        product("유산균 베이직", reportedOn = LocalDate.of(2020, 1, 1))
+
+        mvc.get("/api/products") { param("q", "유산균"); param("sort", "latest") }.andExpect {
+            jsonPath("$.data.items[*].imageUrl") { value(contains("https://image.example.com/a.jpg", null)) }
+        }
+    }
+
+    @Test
     fun `성공 응답만 60초 공개 캐시 헤더가 붙는다`() {
         mvc.get("/api/products") { param("q", "아연") }.andExpect {
             header { string("Cache-Control", "max-age=60, public") }
@@ -307,6 +317,10 @@ class ProductSearchApiTest(
 
     private fun linkBrand(productId: Long, brandName: String) {
         jdbc.update("UPDATE product SET brand_id = (SELECT id FROM brand WHERE name = ?) WHERE id = ?", brandName, productId)
+    }
+
+    private fun setImage(productId: Long, url: String) {
+        jdbc.update("UPDATE product SET image_url = ? WHERE id = ?", url, productId)
     }
 
     private fun product(

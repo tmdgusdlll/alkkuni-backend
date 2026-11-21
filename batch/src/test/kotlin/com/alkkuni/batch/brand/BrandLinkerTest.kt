@@ -33,7 +33,7 @@ class BrandLinkerTest(
 
     @BeforeEach
     fun clean() {
-        jdbc.execute("TRUNCATE product, product_ingredient, product_category")
+        jdbc.execute("TRUNCATE product, product_ingredient, product_category, shopping_link")
     }
 
     @Test
