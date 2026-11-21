@@ -128,6 +128,9 @@ class Product(
         protected set
 
     // 제품 이미지 URL(V19). 1차는 운영자가 SQL로 넣고, 수집(I0030)은 건드리지 않는다. NULL이면 화면이 제형 아이콘을 쓴다.
+    // updatable = false: Hibernate 기본 UPDATE는 모든 칼럼을 쓴다. 수집이 제품을 읽은 뒤 커밋 전에 운영자가 SQL로 넣은 값을
+    // 읽어 둔 옛 값(NULL)으로 덮지 않게 한다. 관리자 API로 바꿀 수 있게 만들 때 이 설정을 다시 본다.
+    @Column(updatable = false)
     var imageUrl: String? = null
         protected set
 

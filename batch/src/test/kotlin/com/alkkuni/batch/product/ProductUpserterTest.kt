@@ -3,6 +3,7 @@ package com.alkkuni.batch.product
 import com.alkkuni.core.ingestion.entity.IngestionCursor
 import com.alkkuni.core.ingestion.repository.IngestionCursorRepository
 import com.alkkuni.core.parser.IngredientAmountParser
+import com.alkkuni.core.product.repository.ProductRepository
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -10,6 +11,7 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.test.context.ActiveProfiles
+import org.springframework.transaction.support.TransactionTemplate
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import org.testcontainers.postgresql.PostgreSQLContainer
@@ -30,6 +32,8 @@ class ProductUpserterTest(
     @Autowired private val upserter: ProductUpserter,
     @Autowired private val jdbc: JdbcTemplate,
     @Autowired private val cursorRepository: IngestionCursorRepository,
+    @Autowired private val productRepository: ProductRepository,
+    @Autowired private val tx: TransactionTemplate,
 ) {
     companion object {
         @Container
@@ -53,6 +57,21 @@ class ProductUpserterTest(
 
         assertEquals(1, cursorRepository.count())
         assertEquals(LocalDate.of(2026, 11, 2), cursorRepository.findById("I0030").get().lastCollectedDate)
+    }
+
+    // 수집 트랜잭션이 제품을 읽은 뒤 커밋 전에 운영자가 SQL로 이미지를 넣어도, 수집 커밋이 읽어 둔 옛 값(NULL)으로 덮지 않는다.
+    @Test
+    fun `수집이 제품을 고쳐 저장해도 그 사이 SQL로 넣은 이미지 URL을 덮지 않는다`() {
+        upserter.upsert(listOf(row("A", VITAMIN)))
+        val brandId = jdbc.queryForObject("SELECT min(id) FROM brand", Long::class.java)
+
+        tx.executeWithoutResult {
+            val product = productRepository.findAllByReportNoIn(listOf("A")).single()
+            jdbc.update("UPDATE product SET image_url = 'https://image.example.com/a.jpg' WHERE report_no = 'A'")
+            product.linkBrand(brandId) // 수집처럼 엔티티를 바꿔 커밋 때 UPDATE가 나가게 한다
+        }
+
+        assertEquals("https://image.example.com/a.jpg", jdbc.queryForObject("SELECT image_url FROM product WHERE report_no = 'A'", String::class.java))
     }
 
     @Test

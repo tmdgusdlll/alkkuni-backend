@@ -11,6 +11,7 @@ CREATE TABLE product (
     source_hash       VARCHAR(64),
     source_updated_at TIMESTAMP,
     status            VARCHAR(20)  NOT NULL,
+    image_url         TEXT,
     PRIMARY KEY (id),
     UNIQUE (report_no)
 );
@@ -95,10 +96,11 @@ CREATE TABLE recall_match_candidate (
 CREATE TABLE shopping_link (
     id               BIGINT        NOT NULL,
     product_id       BIGINT        NOT NULL,
-    url              TEXT          NOT NULL,
+    store            VARCHAR(20)   NOT NULL,
     type             VARCHAR(20)   NOT NULL,
-    match_confidence NUMERIC(4, 3),
-    checked_at       TIMESTAMP,
+    url              TEXT          NOT NULL,
+    -- match_confidence NUMERIC(4, 3): 자동 매칭을 붙일 때 추가한다(V19는 수동 링크라 없음)
+    checked_at       TIMESTAMP     NOT NULL,
     PRIMARY KEY (id),
     FOREIGN KEY (product_id) REFERENCES product (id)
 );
