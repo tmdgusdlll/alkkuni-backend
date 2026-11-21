@@ -46,6 +46,16 @@ class FoodSafetyClientTest {
     }
 
     @Test
+    fun `검색 조건은 이름=값 경로로 붙는다`() {
+        server.expect(requestTo("$BASE/$KEY/I0030/json/1/1000/EVL_YR=2025"))
+            .andRespond(json(ok(totalCount = 0)))
+
+        client.fetchPage("I0030", 1, 1000, params = mapOf("EVL_YR" to "2025"))
+
+        server.verify()
+    }
+
+    @Test
     fun `INFO-200은 빈 페이지다`() {
         // 실제 응답 모양(2026-11-02 CHNG_DT=20991231 호출)
         server.expect(requestTo("$BASE/$KEY/I0030/json/1/1000")).andRespond(

@@ -33,9 +33,18 @@ class FoodSafetyClient(
 
     private val restClient = restClientBuilder.baseUrl(BASE_URL).build()
 
-    /** [start]~[end] 행(1부터, 양끝 포함)을 받는다. [changedSince]를 주면 그날 이후 변경분만 온다. */
-    fun fetchPage(service: String, start: Int, end: Int, changedSince: LocalDate? = null): FoodSafetyPage {
-        val body = request(service, start, end, changedSince)
+    /**
+     * [start]~[end] 행(1부터, 양끝 포함)을 받는다. [changedSince]를 주면 그날 이후 변경분만 온다.
+     * [params]는 서비스별 검색 조건이다(예: I0310 `EVL_YR`). 경로에 `/이름=값`으로 붙는다.
+     */
+    fun fetchPage(
+        service: String,
+        start: Int,
+        end: Int,
+        changedSince: LocalDate? = null,
+        params: Map<String, String> = emptyMap(),
+    ): FoodSafetyPage {
+        val body = request(service, start, end, changedSince, params)
         val where = "$service $start-$end"
         // 점검 안내 HTML처럼 JSON이 아닌 응답도 API 예외 하나로 받게 한다. 본문은 메시지에 넣지 않는다.
         val root = try {
@@ -76,13 +85,14 @@ class FoodSafetyClient(
     fun forEachPage(
         service: String,
         changedSince: LocalDate? = null,
+        params: Map<String, String> = emptyMap(),
         action: (pageNo: Int, page: FoodSafetyPage) -> Unit,
     ): Int {
         var start = 1
         var pageNo = 0
         var totalCount: Int? = null
         do {
-            val page = fetchPage(service, start, start + PAGE_SIZE - 1, changedSince)
+            val page = fetchPage(service, start, start + PAGE_SIZE - 1, changedSince, params)
             pageNo++
             val expected = totalCount ?: page.totalCount.also { totalCount = it }
             check(page.totalCount == expected) {
@@ -95,12 +105,20 @@ class FoodSafetyClient(
         return totalCount!!
     }
 
-    private fun request(service: String, start: Int, end: Int, changedSince: LocalDate?): String {
+    private fun request(
+        service: String,
+        start: Int,
+        end: Int,
+        changedSince: LocalDate?,
+        params: Map<String, String>,
+    ): String {
         val path = buildString {
             append("/{key}/{service}/json/{start}/{end}")
             if (changedSince != null) append("/CHNG_DT={changedSince}")
+            // 이름은 코드의 상수라 그대로 쓰고, 값만 변수로 넘겨 인코딩되게 한다.
+            params.keys.forEachIndexed { i, name -> append("/$name={p$i}") }
         }
-        val variables = mapOf(
+        val variables = params.values.withIndex().associate { (i, v) -> "p$i" to v } + mapOf(
             "key" to apiKey,
             "service" to service,
             "start" to start,

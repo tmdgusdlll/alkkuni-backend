@@ -12,6 +12,8 @@ CREATE TABLE product (
     source_updated_at TIMESTAMP,
     status            VARCHAR(20)  NOT NULL,
     image_url         TEXT,
+    production_year   SMALLINT,                      -- I0310 공개된 최신 연도. 그해 실적에 없으면 NULL
+    production_qty    BIGINT CHECK (production_qty >= 0), -- 그해 생산량. 판매 추정 = production_qty > 0 AND NOT export_only
     PRIMARY KEY (id),
     UNIQUE (report_no)
 );
