@@ -11,7 +11,8 @@ import org.springframework.transaction.annotation.Transactional
  */
 @Service
 class ProductionApplier(private val jdbc: JdbcTemplate) {
-    data class Result(val matched: Int, val cleared: Int, val estimated: Long)
+    /** [updated]: 값이 실제로 바뀐 제품 수(같은 값은 세지 않는다), [cleared]: 목록에 없어 비운 제품 수. */
+    data class Result(val updated: Int, val cleared: Int, val estimated: Long)
 
     @Transactional
     fun apply(year: Int, quantities: Map<String, Long>): Result {
@@ -20,12 +21,15 @@ class ProductionApplier(private val jdbc: JdbcTemplate) {
             ps.setString(1, e.key)
             ps.setLong(2, e.value)
         }
-        val matched = jdbc.update(
+        // 같은 값은 건너뛴다. 다음 달 실행에서 같은 해 값이 정정됐는지 job_run.changed_count로 볼 수 있다.
+        val updated = jdbc.update(
             """
             UPDATE product p SET production_year = ?, production_qty = i.qty
-            FROM production_in i WHERE p.report_no = i.report_no
+            FROM production_in i
+            WHERE p.report_no = i.report_no
+              AND (p.production_year IS DISTINCT FROM ? OR p.production_qty IS DISTINCT FROM i.qty)
             """,
-            year,
+            year, year,
         )
         val cleared = jdbc.update(
             """
@@ -42,6 +46,6 @@ class ProductionApplier(private val jdbc: JdbcTemplate) {
             """,
             Long::class.java,
         )!!
-        return Result(matched, cleared, estimated)
+        return Result(updated, cleared, estimated)
     }
 }

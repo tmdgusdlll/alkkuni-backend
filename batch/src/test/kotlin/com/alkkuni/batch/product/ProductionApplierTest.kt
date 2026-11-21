@@ -48,10 +48,20 @@ class ProductionApplierTest(
         assertEquals(2025 to 10L, productionOf("1"))
         assertEquals(2025 to 0L, productionOf("2"))
         assertEquals(null to null, productionOf("4"))
-        assertEquals(3, result.matched)
+        assertEquals(3, result.updated)
         assertEquals(1, result.cleared)
         // 생산량 > 0 인 1·3 중 수출용 3은 빠진다.
         assertEquals(1, result.estimated)
+    }
+
+    @Test
+    fun `같은 값을 다시 반영하면 바뀐 수는 0이고 바뀐 값만 센다`() {
+        product("1")
+        product("2")
+        applier.apply(2025, mapOf("1" to 10L, "2" to 0L))
+
+        assertEquals(0, applier.apply(2025, mapOf("1" to 10L, "2" to 0L)).updated)
+        assertEquals(1, applier.apply(2025, mapOf("1" to 10L, "2" to 4L)).updated)
     }
 
     private fun product(reportNo: String, exportOnly: Boolean = false): Long = jdbc.queryForObject(
