@@ -345,6 +345,23 @@ class ProductExploreApiTest(
     }
 
     @Test
+    fun `onSale=true면 판매 추정 제품(생산실적 0 초과·국내용)만 낸다`() {
+        // 메인 인기 성분 카드용. 생산 0, 생산실적 없음, 생산했지만 수출용인 제품은 빠진다.
+        val onSale = product("아연 베이직").also { has(it, "아연", "8"); setProduction(it, 100) }
+        product("아연 단종").also { has(it, "아연", "30"); setProduction(it, 0) }
+        product("아연 미상").also { has(it, "아연", "20") }
+        product("아연 골드(수출용)").also { has(it, "아연", "15"); setProduction(it, 500) }
+
+        mvc.get("/api/products/explore") { param("ingredient", "${id("아연")}"); param("onSale", "true") }.andExpect {
+            jsonPath("$.data.totalCount") { value(1) }
+            jsonPath("$.data.items[*].id") { value(contains(onSale.toInt())) }
+        }
+        mvc.get("/api/products/explore") { param("ingredient", "${id("아연")}") }.andExpect {
+            jsonPath("$.data.totalCount") { value(4) }
+        }
+    }
+
+    @Test
     fun `제품 이미지 URL을 붙인다`() {
         product("아연 골드").also { has(it, "아연", "30"); setImage(it, "https://image.example.com/a.jpg") }
 
@@ -446,6 +463,10 @@ class ProductExploreApiTest(
 
     private fun linkBrand(productId: Long, brandName: String) {
         jdbc.update("UPDATE product SET brand_id = (SELECT id FROM brand WHERE name = ?) WHERE id = ?", brandName, productId)
+    }
+
+    private fun setProduction(productId: Long, qty: Long) {
+        jdbc.update("UPDATE product SET production_year = 2025, production_qty = ? WHERE id = ?", qty, productId)
     }
 
     private fun setImage(productId: Long, url: String) {

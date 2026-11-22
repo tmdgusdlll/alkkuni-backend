@@ -96,7 +96,9 @@ class ProductSearchRepository(private val jdbc: JdbcClient) {
             "LEFT JOIN (SELECT NULL::numeric AS daily_amount, NULL::varchar AS daily_unit) a ON true"
         }
         val order = when (sort) {
-            ProductSearchSort.RELEVANCE -> "${brandFirst(cond)}p.text_match DESC, ${similarity(cond)} DESC, p.reported_on DESC NULLS LAST"
+            // 정확 일치(OEM 이름을 그대로 친 경우)·브랜드·이름 일치는 검색 의도를 거의 틀리지 않으므로, 추정(정밀도 84%)인 판매 추정은 그 뒤에 둔다.
+            // 판매 추정 = production_qty > 0 AND NOT export_only인데, 수출용은 앞의 export_only 정렬로 이미 뒤라 생산량만 본다. 생산실적 없음(NULL)과 생산 0은 같게 둔다(PLANNING.md "노출 순서·판매 필터").
+            ProductSearchSort.RELEVANCE -> "${brandFirst(cond)}p.match_rank DESC, (coalesce(p.production_qty, 0) > 0) DESC, ${similarity(cond)} DESC, p.reported_on DESC NULLS LAST"
             ProductSearchSort.LATEST -> "p.reported_on DESC NULLS LAST"
             ProductSearchSort.AMOUNT -> "${unitOrder(sortKey("a.daily_unit"))}${sortKey("a.daily_amount")} DESC NULLS LAST"
         }
@@ -105,8 +107,8 @@ class ProductSearchRepository(private val jdbc: JdbcClient) {
             SELECT p.id, p.name, p.manufacturer, p.form, p.reported_on, p.basis_check, p.parse_status, p.brand_id, p.export_only, p.image_url, a.daily_amount, a.daily_unit
             FROM hit p
             $amount
-            -- 수출용 제품(V14)은 어느 정렬이든 국내 제품 뒤다.
-            ORDER BY p.export_only, $order, p.id DESC
+            -- 수출용 제품(V14)은 어느 정렬이든 국내 제품 뒤다. 관련도순만 제품명 정확 일치를 그보다 앞에 둔다(exactFirst).
+            ORDER BY ${exactFirst(cond, sort)}p.export_only, $order, p.id DESC
             LIMIT :limit OFFSET :offset
         """
         return params(jdbc.sql(sql), cond)
@@ -127,13 +129,22 @@ class ProductSearchRepository(private val jdbc: JdbcClient) {
     // (로컬 "애터미" 347개 중 107개가 241위 이후).
     private fun brandFirst(cond: ProductSearchCondition) = if (cond.brandId != null) "(p.brand_id = :brandId) DESC NULLS LAST, " else ""
 
+    // 제품명 정확 일치(대소문자·공백 무시)는 OEM 이름 제품을 손에 든 사용자가 바로 찾게 맨 앞에 둔다.
+    // 검색어가 성분 이름이면 쓰지 않는다. "비타민D"를 친 사람은 비타민D 제품을 찾는 것이고, 이름이 그냥 "비타민D"인 OEM 제품은
+    // 대부분 생산하지 않아(로컬 10개 중 7개) 판매 추정 제품을 상위 20개에서 밀어낸다(PLANNING.md "노출 순서·판매 필터").
+    private fun exactFirst(cond: ProductSearchCondition, sort: ProductSearchSort) =
+        if (sort == ProductSearchSort.RELEVANCE && cond.ingredientId == null) "(lower(replace(p.name, ' ', '')) = lower(replace(:q, ' ', ''))) DESC, " else ""
+
     private fun similarity(cond: ProductSearchCondition) =
         if (cond.brandId != null) "CASE WHEN p.brand_id = :brandId THEN 1 ELSE word_similarity(:q, p.name) END" else "word_similarity(:q, p.name)"
 
     fun count(cond: ProductSearchCondition): Long =
         params(jdbc.sql("${hits(cond)} SELECT count(*) FROM hit"), cond).query(Long::class.java).single()
 
-    // 검색에 걸린 제품과, 제품명·제조사·브랜드로 걸렸는지(text_match). 여러 경로로 걸리면 한 줄로 합친다.
+    // 검색에 걸린 제품과 걸린 정도(match_rank). 여러 경로로 걸리면 가장 높은 값 한 줄로 합친다.
+    // 2 = 제품명·제조사가 검색어를 그대로 포함하거나 브랜드로 걸림, 1 = 오타 허용(<%)으로만 걸림, 0 = 성분으로만 걸림.
+    // 1과 2를 나누는 건 관련도순에서 판매 추정이 유사도보다 앞서기 때문이다. 나누지 않으면 "여에스더 비타민D" 검색에서
+    // <%로 걸린 판매 추정 "여에스더 비타민B …"가 검색어를 포함한 "여에스더 비타민D …"보다 앞에 온다.
     // 브랜드는 제품명에 브랜드 이름이 없는 제품("ATOMY …" ↔ 애터미)을 찾으려고 더한다. 관련도순에서는 브랜드 제품이 먼저다(brandFirst).
     // 상태 필터에 product JOIN이 필요하므로, 그때 응답 칼럼도 같이 가져와 본 쿼리에서 product를 다시 JOIN하지 않는다.
     private fun hits(cond: ProductSearchCondition): String {
@@ -142,17 +153,17 @@ class ProductSearchRepository(private val jdbc: JdbcClient) {
             if (cond.textSearch) {
                 // 부분 일치(ILIKE)는 "고함량아연"처럼 단어 중간도 찾고, <%는 "비타민씨" → "비타민C" 같은 오타를 허용한다.
                 val fuzzy = if (cond.fuzzy) " OR :q <% name" else ""
-                "SELECT id, true AS text_match FROM product WHERE name ILIKE :pattern OR manufacturer ILIKE :pattern$fuzzy"
+                "SELECT id, CASE WHEN name ILIKE :pattern OR manufacturer ILIKE :pattern THEN 2 ELSE 1 END AS match_rank FROM product WHERE name ILIKE :pattern OR manufacturer ILIKE :pattern$fuzzy"
             } else {
                 null
             },
-            cond.ingredientId?.let { "SELECT product_id AS id, false AS text_match FROM product_ingredient WHERE ingredient_id = :ingredientId" },
-            cond.brandId?.let { "SELECT id, true AS text_match FROM product WHERE brand_id = :brandId" },
+            cond.ingredientId?.let { "SELECT product_id AS id, 0 AS match_rank FROM product_ingredient WHERE ingredient_id = :ingredientId" },
+            cond.brandId?.let { "SELECT id, 2 AS match_rank FROM product WHERE brand_id = :brandId" },
         )
         return """
             WITH hit AS (
-                SELECT p.id, p.name, p.manufacturer, p.form, p.reported_on, p.basis_check, p.parse_status, p.brand_id, p.export_only, p.image_url,
-                       bool_or(h.text_match) AS text_match
+                SELECT p.id, p.name, p.manufacturer, p.form, p.reported_on, p.basis_check, p.parse_status, p.brand_id, p.export_only, p.image_url, p.production_qty,
+                       max(h.match_rank) AS match_rank
                 FROM (${sources.joinToString(" UNION ALL ")}) h
                 JOIN product p ON p.id = h.id
                 WHERE p.status = 'ACTIVE' AND NOT p.raw_material${marketFilter(cond)}
