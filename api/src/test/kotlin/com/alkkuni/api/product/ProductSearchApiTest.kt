@@ -332,7 +332,7 @@ class ProductSearchApiTest(
         val oemNew = product("100억 유산균 아연&비타민D", reportedOn = LocalDate.of(2025, 12, 5)).also { setProduction(it, 241) }
         val brandOld = product("여에스더 비타민D 1000IU", reportedOn = LocalDate.of(2019, 1, 1)).also { setProduction(it, 5000); linkBrand(it, "애터미") }
         // 브랜드가 있어도 판매 추정이 아니면 판매 추정 제품 뒤다
-        val brandNoSale = product("애터미 비타민D", reportedOn = LocalDate.of(2026, 1, 1)).also { setProduction(it, 0); linkBrand(it, "애터미") }
+        val brandNoSale = product("애터미 비타민D", reportedOn = LocalDate.of(2024, 1, 1)).also { setProduction(it, 0); linkBrand(it, "애터미") }
 
         mvc.get("/api/products") { param("q", "비타민D") }.andExpect {
             jsonPath("$.data.items[*].id") { value(contains(brandOld.toInt(), oemNew.toInt(), brandNoSale.toInt())) }
@@ -353,7 +353,7 @@ class ProductSearchApiTest(
     @Test
     fun `검색어가 성분 이름이면 제품명 정확 일치를 앞에 두지 않는다`() {
         // 이름이 그냥 "아연"인 생산 0 제품보다 판매 추정 제품이 앞이다.
-        val exactNoSale = product("아연", reportedOn = LocalDate.of(2026, 1, 1)).also { setProduction(it, 0) }
+        val exactNoSale = product("아연", reportedOn = LocalDate.of(2024, 1, 1)).also { setProduction(it, 0) }
         val onSale = product("고함량 아연 플러스", reportedOn = LocalDate.of(2015, 1, 1)).also { setProduction(it, 300) }
 
         mvc.get("/api/products") { param("q", "아연") }.andExpect {
@@ -365,7 +365,8 @@ class ProductSearchApiTest(
     @Test
     fun `관련도순은 이름 일치 안에서 판매 추정 제품이 유사도보다 먼저다`() {
         // 유사도가 더 높은 생산 0·생산실적 없음 제품보다, 이름이 덜 비슷한 판매 추정 제품이 앞이다.
-        val similarNoSale = product("루테인 100", reportedOn = LocalDate.of(2026, 1, 1)).also { setProduction(it, 0) }
+        // 생산 0 제품은 최신 실적 연도(2025) 전 신고라 판매 추정 아님, 생산실적 없음 제품은 2026년 신고라 신제품(중립)이다.
+        val similarNoSale = product("루테인 100", reportedOn = LocalDate.of(2024, 1, 1)).also { setProduction(it, 0) }
         val similarUnknown = product("루테인 1", reportedOn = LocalDate.of(2026, 1, 2))
         val onSale = product("눈건강 루테인 지아잔틴 플러스 골드", reportedOn = LocalDate.of(2015, 1, 1)).also { setProduction(it, 300) }
         // 성분으로만 걸린 판매 추정 제품은 이름 일치 제품보다 뒤다
@@ -396,6 +397,19 @@ class ProductSearchApiTest(
             jsonPath("$.data.items[*].id") {
                 value(contains(onSale.toInt(), newProduct.toInt(), lateIn2025.toInt(), zeroIn2025.toInt(), unknownIn2024.toInt()))
             }
+        }
+    }
+
+    @Test
+    fun `최신 실적 연도 뒤에 신고됐는데 그해 생산 0으로 실린 제품도 중립이다`() {
+        // 2025년 실적은 2026년 초에 제출돼, 그때 이미 신고된 2026년 제품이 생산 0으로 실린다(운영 2026-01·02 신고 약 530개)
+        val onSale = product("루테인 골드", reportedOn = LocalDate.of(2015, 1, 1)).also { setProduction(it, 300) }
+        val zeroAfter = product("루테인 플러스", reportedOn = LocalDate.of(2026, 1, 5)).also { setProduction(it, 0) }
+        // 브랜드 연결은 중립보다 뒤의 기준이다. 최신 실적 연도 안에 신고하고 0을 보고한 제품은 중립이 아니다(표본 확인 뒤 정함)
+        val zeroIn2025 = product("루테인 라이트", reportedOn = LocalDate.of(2025, 12, 31)).also { setProduction(it, 0); linkBrand(it, "애터미") }
+
+        mvc.get("/api/products") { param("q", "루테인") }.andExpect {
+            jsonPath("$.data.items[*].id") { value(contains(onSale.toInt(), zeroAfter.toInt(), zeroIn2025.toInt())) }
         }
     }
 
