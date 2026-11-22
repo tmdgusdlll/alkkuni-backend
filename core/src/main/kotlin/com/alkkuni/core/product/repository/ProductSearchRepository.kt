@@ -9,7 +9,7 @@ import java.sql.ResultSet
 import java.time.LocalDate
 
 enum class ProductSearchSort {
-    // 정확 일치 → 국내 → 브랜드 → 검색어 포함 → 오타 허용 → 성분 → 판매 추정 → 유사도 → 브랜드 연결 → 최신순(search의 exactFirst·order, PLANNING.md "노출 순서·판매 필터")
+    // 정확 일치 → 국내 → 브랜드 → 검색어 포함 → 오타 허용 → 성분 → 판매 추정 → 신제품(중립) → 유사도 → 브랜드 연결 → 최신순(search의 exactFirst·order, PLANNING.md "노출 순서·판매 필터")
     RELEVANCE,
     // 신고일 최신순
     LATEST,
@@ -98,9 +98,10 @@ class ProductSearchRepository(private val jdbc: JdbcClient) {
         val order = when (sort) {
             // 정확 일치(OEM 이름을 그대로 친 경우)·브랜드·이름 일치는 검색 의도를 거의 틀리지 않으므로, 추정(정밀도 84%)인 판매 추정은 그 뒤에 둔다.
             // 판매 추정 = production_qty > 0 AND NOT export_only인데, 수출용은 앞의 export_only 정렬로 이미 뒤라 생산량만 본다. 생산실적 없음(NULL)과 생산 0은 같게 둔다.
+            // 단, 최신 실적 연도 안이나 뒤에 신고된 생산실적 없음 제품은 아직 실적이 공개되지 않은 신제품이라 판매 추정과 판매 추정 아님 사이(중립)에 둔다.
             // 유사도가 같으면 브랜드가 연결된 제품이 먼저다. 유사도보다 앞에 두면 제조사·오타 허용으로 걸린 브랜드 제품이 이름이 더 비슷한 제품을 앞지른다. 검색어를 포함한 판매 추정 제품끼리는 유사도가 같아 최신 신고순이 되므로,
             // 브랜드 없는 OEM 일반 이름 제품("100억 유산균 아연&비타민D")이 대표 제품보다 앞에 왔다(PLANNING.md "노출 순서·판매 필터").
-            ProductSearchSort.RELEVANCE -> "${brandFirst(cond)}p.match_rank DESC, (coalesce(p.production_qty, 0) > 0) DESC, ${similarity(cond)} DESC, (p.brand_id IS NOT NULL) DESC, p.reported_on DESC NULLS LAST"
+            ProductSearchSort.RELEVANCE -> "${brandFirst(cond)}p.match_rank DESC, $salesTier DESC, ${similarity(cond)} DESC, (p.brand_id IS NOT NULL) DESC, p.reported_on DESC NULLS LAST"
             ProductSearchSort.LATEST -> "p.reported_on DESC NULLS LAST"
             ProductSearchSort.AMOUNT -> "${unitOrder(sortKey("a.daily_unit"))}${sortKey("a.daily_amount")} DESC NULLS LAST"
         }
@@ -125,6 +126,16 @@ class ProductSearchRepository(private val jdbc: JdbcClient) {
         ProductMarket.DOMESTIC -> " AND NOT p.export_only"
         ProductMarket.EXPORT -> " AND p.export_only"
     }
+
+    // 2 = 판매 추정, 1 = 신제품(중립), 0 = 판매 추정 아님. 최신 실적 연도는 저장된 production_year의 최댓값이라 batch가 새 연도를 받으면 따라간다.
+    // 최신 실적 연도 안에 신고된 제품도 넣는다. 연말 신고 제품은 그해 실적에 없을 수 있어, 넣지 않으면 다음 해 실적이 들어오는 날
+    // 신고 몇 주 만에 판매 추정 아님으로 내려간다. 생산 0으로 보고한 제품(production_qty = 0)은 여기에 들지 않는다.
+    // 생산실적을 한 번도 받지 않았으면(최댓값 NULL) 신제품도 0이다. 비상관 서브쿼리라 쿼리당 한 번만 계산된다.
+    private val salesTier = """
+        CASE WHEN p.production_qty > 0 THEN 2
+             WHEN p.production_qty IS NULL AND p.reported_on >= make_date((SELECT max(production_year) FROM product), 1, 1) THEN 1
+             ELSE 0 END
+    """.trimIndent()
 
     // 검색어가 브랜드면 그 브랜드 제품을 맨 앞에 두고, 그 안에서는 제품명 유사도를 보지 않는다(같은 값 → 최신순).
     // 제품명에 브랜드 이름이 없는 제품("ATOMY …")은 유사도가 0에 가까워, 유사도로 정렬하면 브랜드 제품 중 맨 뒤로 밀린다
