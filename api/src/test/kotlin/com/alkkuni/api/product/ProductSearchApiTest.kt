@@ -295,6 +295,68 @@ class ProductSearchApiTest(
     }
 
     @Test
+    fun `관련도순은 제품명 정확 일치가 수출용·판매 추정보다 먼저다`() {
+        // 정확 일치는 대소문자·공백을 무시한다. 생산 0(단종·재고 판매)이어도, 수출용이어도 이름을 그대로 치면 맨 앞이다.
+        val onSale = product("홍삼정 로얄 골드", reportedOn = LocalDate.of(2026, 1, 1)).also { setProduction(it, 5000) }
+        val exact = product("홍삼정로얄(수출용)").also { setProduction(it, 0) }
+
+        mvc.get("/api/products") { param("q", "홍삼정 로얄(수출용)") }.andExpect {
+            jsonPath("$.data.items[0].id") { value(exact.toInt()) }
+        }
+        // 쇼핑몰에서 복사한 이름의 줄바꿈 없는 공백(NBSP)·전각 공백도 공백으로 본다
+        for (q in listOf("홍삼정\u00A0로얄(수출용)", "홍삼정\u3000로얄(수출용)")) {
+            mvc.get("/api/products") { param("q", q) }.andExpect {
+                jsonPath("$.data.items[0].id") { value(exact.toInt()) }
+            }
+        }
+        // 정확 일치가 아니면 수출용은 여전히 뒤다
+        mvc.get("/api/products") { param("q", "홍삼정") }.andExpect {
+            jsonPath("$.data.items[*].id") { value(contains(onSale.toInt(), exact.toInt())) }
+        }
+    }
+
+    @Test
+    fun `검색어를 그대로 포함한 제품이 오타 허용으로만 걸린 판매 추정 제품보다 먼저다`() {
+        // 실제 "여에스더 비타민D": 비타민B 제품은 <%(오타 허용)로만 걸린다. 판매 추정이어도 검색어를 포함한 제품 뒤다.
+        val fuzzyOnSale = product("여에스더 비타민B 컴플렉스").also { setProduction(it, 900) }
+        val containsNoSale = product("여에스더 비타민D 1000IU Essential")
+
+        mvc.get("/api/products") { param("q", "여에스더 비타민D") }.andExpect {
+            jsonPath("$.data.items[*].id") { value(contains(containsNoSale.toInt(), fuzzyOnSale.toInt())) }
+        }
+    }
+
+    @Test
+    fun `검색어가 성분 이름이면 제품명 정확 일치를 앞에 두지 않는다`() {
+        // 이름이 그냥 "아연"인 생산 0 제품보다 판매 추정 제품이 앞이다.
+        val exactNoSale = product("아연", reportedOn = LocalDate.of(2026, 1, 1)).also { setProduction(it, 0) }
+        val onSale = product("고함량 아연 플러스", reportedOn = LocalDate.of(2015, 1, 1)).also { setProduction(it, 300) }
+
+        mvc.get("/api/products") { param("q", "아연") }.andExpect {
+            jsonPath("$.data.matchedIngredient.name") { value("아연") }
+            jsonPath("$.data.items[*].id") { value(contains(onSale.toInt(), exactNoSale.toInt())) }
+        }
+    }
+
+    @Test
+    fun `관련도순은 이름 일치 안에서 판매 추정 제품이 유사도보다 먼저다`() {
+        // 유사도가 더 높은 생산 0·생산실적 없음 제품보다, 이름이 덜 비슷한 판매 추정 제품이 앞이다.
+        val similarNoSale = product("루테인 100", reportedOn = LocalDate.of(2026, 1, 1)).also { setProduction(it, 0) }
+        val similarUnknown = product("루테인 1", reportedOn = LocalDate.of(2026, 1, 2))
+        val onSale = product("눈건강 루테인 지아잔틴 플러스 골드", reportedOn = LocalDate.of(2015, 1, 1)).also { setProduction(it, 300) }
+        // 성분으로만 걸린 판매 추정 제품은 이름 일치 제품보다 뒤다
+        val byIngredient = product("멀티비타민 골드").also { setProduction(it, 9000); ingredient(it, "루테인", "20") }
+
+        mvc.get("/api/products") { param("q", "루테인") }.andExpect {
+            jsonPath("$.data.items[*].id") { value(contains(onSale.toInt(), similarUnknown.toInt(), similarNoSale.toInt(), byIngredient.toInt())) }
+        }
+        // 최신순은 판매 추정을 보지 않는다
+        mvc.get("/api/products") { param("q", "루테인"); param("sort", "latest") }.andExpect {
+            jsonPath("$.data.items[0].id") { value(similarUnknown.toInt()) }
+        }
+    }
+
+    @Test
     fun `제품 이미지 URL을 붙이고 없으면 null이다`() {
         product("유산균 골드", reportedOn = LocalDate.of(2026, 1, 1)).also { setImage(it, "https://image.example.com/a.jpg") }
         product("유산균 베이직", reportedOn = LocalDate.of(2020, 1, 1))
@@ -317,6 +379,10 @@ class ProductSearchApiTest(
 
     private fun linkBrand(productId: Long, brandName: String) {
         jdbc.update("UPDATE product SET brand_id = (SELECT id FROM brand WHERE name = ?) WHERE id = ?", brandName, productId)
+    }
+
+    private fun setProduction(productId: Long, qty: Long) {
+        jdbc.update("UPDATE product SET production_year = 2025, production_qty = ? WHERE id = ?", qty, productId)
     }
 
     private fun setImage(productId: Long, url: String) {

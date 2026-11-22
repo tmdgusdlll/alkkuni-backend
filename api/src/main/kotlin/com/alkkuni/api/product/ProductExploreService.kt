@@ -14,6 +14,7 @@ import com.alkkuni.core.product.repository.ProductCategoryRepository
 import com.alkkuni.core.product.repository.ProductExploreCondition
 import com.alkkuni.core.product.repository.ProductExploreRepository
 import com.alkkuni.core.product.repository.ProductExploreSort
+import com.alkkuni.core.product.repository.ProductMarket
 import org.springframework.stereotype.Service
 import java.math.BigDecimal
 
@@ -34,6 +35,8 @@ class ProductExploreService(
      * - 목록 값("ingredient=5,")의 빈 원소는 null로 바인딩된다. 비교 API처럼 Long?로 받아 거절한다.
      * - meetsReference: 고른 성분 모두 1일 함량이 기준값 이상인 제품만. 기준값이 없는 성분이 있으면 거절한다
      *   (조용히 무시하면 확인하지 않은 성분까지 "충족"으로 보인다).
+     * - onSale: 판매 추정 제품(생산실적 0 초과·국내용)만. 메인 인기 성분 카드용이고, 정밀도가 기준(90%)에 못 미쳐
+     *   화면 필터 토글로는 열지 않는다(PLANNING.md "노출 순서·판매 필터").
      * - brand: 고른 브랜드 중 하나인 제품만. 없는 브랜드 id는 거절한다(오타로 빈 결과가 "제품 없음"처럼 보이지 않게).
      */
     fun explore(
@@ -46,6 +49,7 @@ class ProductExploreService(
         max: BigDecimal?,
         meetsReference: Boolean,
         market: String,
+        onSale: Boolean,
         sort: String?,
         page: Int,
         size: Int,
@@ -84,7 +88,10 @@ class ProductExploreService(
         } else {
             emptyList()
         }
-        val cond = ProductExploreCondition(ingredientIds, excludeIds, cleanForms, base, min, max, references, brandIds, parseMarket(market), category)
+        val productMarket = parseMarket(market)
+        // 판매 추정은 국내용만이라 수출용만과 함께 쓰면 늘 빈 결과다. 기준 충족처럼 "제품 없음"으로 보이지 않게 거절한다.
+        if (onSale && productMarket == ProductMarket.EXPORT) invalid("onSale", "판매 추정은 수출용만 보기와 함께 쓸 수 없습니다.")
+        val cond = ProductExploreCondition(ingredientIds, excludeIds, cleanForms, base, min, max, references, brandIds, productMarket, category, onSale)
 
         val result = exploreRepository.find(cond, searchSort, page, size)
         val amounts = exploreRepository.amounts(result.content.map { it.id }, ingredientIds)

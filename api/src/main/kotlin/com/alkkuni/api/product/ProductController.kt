@@ -61,6 +61,8 @@ class ProductController(
         @RequestParam(required = false) @PositiveOrZero @DecimalMax(MAX_AMOUNT) max: BigDecimal?,
         @RequestParam(defaultValue = "false") meetsReference: Boolean,
         @RequestParam(defaultValue = "all") market: String,
+        // true면 판매 추정 제품만(메인 인기 성분 카드용)
+        @RequestParam(defaultValue = "false") onSale: Boolean,
         // 없으면 성분이 있을 때 amount, 카테고리만 있을 때 latest
         @RequestParam(required = false) sort: String?,
         @RequestParam(defaultValue = "0") @Min(0) @Max(MAX_PAGE) page: Int,
@@ -68,7 +70,7 @@ class ProductController(
     ): ResponseEntity<ApiResponse<ProductExploreResponse>> =
         ResponseEntity.ok()
             .cacheControl(PUBLIC_CACHE)
-            .body(ApiResponse.ok(exploreService.explore(ingredient.orEmpty(), category, exclude.orEmpty(), form.orEmpty(), brand.orEmpty(), min, max, meetsReference, market, sort, page, size)))
+            .body(ApiResponse.ok(exploreService.explore(ingredient.orEmpty(), category, exclude.orEmpty(), form.orEmpty(), brand.orEmpty(), min, max, meetsReference, market, onSale, sort, page, size)))
 
     // 숫자가 아닌 id는 타입 변환 실패로 400이 된다. /compare·/explore는 리터럴 경로라 이 매핑보다 먼저 잡힌다.
     @GetMapping("/{id}")

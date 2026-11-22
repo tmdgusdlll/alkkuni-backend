@@ -279,6 +279,8 @@ class ProductExploreApiTest(
         expectField("sort", "ingredient" to "$zinc", "sort" to "popular")
         expectField("sort", "ingredient" to "$zinc", "sort" to "amount:${id("철")}")
         expectField("min", "ingredient" to "$zinc", "min" to "5", "max" to "1")
+        // 판매 추정은 국내용만이라 수출용만과 함께 쓰면 늘 빈 결과다. "제품 없음"처럼 보이지 않게 거절한다.
+        expectField("onSale", "ingredient" to "$zinc", "onSale" to "true", "market" to "export")
         // PostgreSQL numeric을 넘는 값이 DB까지 가 500이 되지 않는다.
         mvc.get("/api/products/explore") { param("ingredient", "$zinc"); param("min", "1e999999999") }.andExpect {
             status { isBadRequest() }
@@ -341,6 +343,23 @@ class ProductExploreApiTest(
         mvc.get("/api/products/explore") { param("ingredient", "${id("아연")}"); param("market", "export") }.andExpect {
             jsonPath("$.data.items[*].id") { value(contains(export.toInt())) }
             jsonPath("$.data.items[0].exportOnly") { value(true) }
+        }
+    }
+
+    @Test
+    fun `onSale=true면 판매 추정 제품(생산실적 0 초과·국내용)만 낸다`() {
+        // 메인 인기 성분 카드용. 생산 0, 생산실적 없음, 생산했지만 수출용인 제품은 빠진다.
+        val onSale = product("아연 베이직").also { has(it, "아연", "8"); setProduction(it, 100) }
+        product("아연 단종").also { has(it, "아연", "30"); setProduction(it, 0) }
+        product("아연 미상").also { has(it, "아연", "20") }
+        product("아연 골드(수출용)").also { has(it, "아연", "15"); setProduction(it, 500) }
+
+        mvc.get("/api/products/explore") { param("ingredient", "${id("아연")}"); param("onSale", "true") }.andExpect {
+            jsonPath("$.data.totalCount") { value(1) }
+            jsonPath("$.data.items[*].id") { value(contains(onSale.toInt())) }
+        }
+        mvc.get("/api/products/explore") { param("ingredient", "${id("아연")}") }.andExpect {
+            jsonPath("$.data.totalCount") { value(4) }
         }
     }
 
@@ -446,6 +465,10 @@ class ProductExploreApiTest(
 
     private fun linkBrand(productId: Long, brandName: String) {
         jdbc.update("UPDATE product SET brand_id = (SELECT id FROM brand WHERE name = ?) WHERE id = ?", brandName, productId)
+    }
+
+    private fun setProduction(productId: Long, qty: Long) {
+        jdbc.update("UPDATE product SET production_year = 2025, production_qty = ? WHERE id = ?", qty, productId)
     }
 
     private fun setImage(productId: Long, url: String) {
