@@ -129,11 +129,15 @@ class ProductSearchRepository(private val jdbc: JdbcClient) {
 
     // 2 = 판매 추정, 1 = 신제품(중립), 0 = 판매 추정 아님. 최신 실적 연도는 저장된 production_year의 최댓값이라 batch가 새 연도를 받으면 따라간다.
     // 최신 실적 연도 안에 신고된 제품도 넣는다. 연말 신고 제품은 그해 실적에 없을 수 있어, 넣지 않으면 다음 해 실적이 들어오는 날
-    // 신고 몇 주 만에 판매 추정 아님으로 내려간다. 생산 0으로 보고한 제품(production_qty = 0)은 여기에 들지 않는다.
+    // 신고 몇 주 만에 판매 추정 아님으로 내려간다.
+    // 최신 실적 연도 뒤에 신고됐는데 생산 0인 제품도 넣는다. 실적은 다음 해 초에 제출돼 그때 이미 신고된 제품이 0으로 실린다
+    // (운영 2026-01·02 신고 약 530개). 그해 생산할 수 없던 제품이라 실적 없음과 같다.
+    // 최신 실적 연도 안에 신고하고 생산 0을 보고한 제품은 여기에 들지 않는다(PLANNING 3, 표본 확인 뒤 정함).
     // 생산실적을 한 번도 받지 않았으면(최댓값 NULL) 신제품도 0이다. 비상관 서브쿼리라 쿼리당 한 번만 계산된다.
     private val salesTier = """
         CASE WHEN p.production_qty > 0 THEN 2
              WHEN p.production_qty IS NULL AND p.reported_on >= make_date((SELECT max(production_year) FROM product), 1, 1) THEN 1
+             WHEN p.production_qty = 0 AND p.reported_on > make_date((SELECT max(production_year) FROM product), 12, 31) THEN 1
              ELSE 0 END
     """.trimIndent()
 

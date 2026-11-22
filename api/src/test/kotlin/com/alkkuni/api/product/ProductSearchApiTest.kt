@@ -400,6 +400,19 @@ class ProductSearchApiTest(
     }
 
     @Test
+    fun `최신 실적 연도 뒤에 신고됐는데 그해 생산 0으로 실린 제품도 중립이다`() {
+        // 2025년 실적은 2026년 초에 제출돼, 그때 이미 신고된 2026년 제품이 생산 0으로 실린다(운영 2026-01·02 신고 약 530개)
+        val onSale = product("루테인 골드", reportedOn = LocalDate.of(2015, 1, 1)).also { setProduction(it, 300) }
+        val zeroAfter = product("루테인 플러스", reportedOn = LocalDate.of(2026, 1, 5)).also { setProduction(it, 0) }
+        // 브랜드 연결은 중립보다 뒤의 기준이다. 최신 실적 연도 안에 신고하고 0을 보고한 제품은 중립이 아니다(표본 확인 뒤 정함)
+        val zeroIn2025 = product("루테인 라이트", reportedOn = LocalDate.of(2025, 12, 31)).also { setProduction(it, 0); linkBrand(it, "애터미") }
+
+        mvc.get("/api/products") { param("q", "루테인") }.andExpect {
+            jsonPath("$.data.items[*].id") { value(contains(onSale.toInt(), zeroAfter.toInt(), zeroIn2025.toInt())) }
+        }
+    }
+
+    @Test
     fun `생산실적을 한 번도 받지 않았으면 신제품도 중립이 아니다`() {
         val newProduct = product("루테인 플러스", reportedOn = LocalDate.of(2026, 3, 1))
         // 중립이 없으면 브랜드 연결이 신고일보다 앞서 이 제품이 먼저다
