@@ -381,17 +381,32 @@ class ProductSearchApiTest(
     }
 
     @Test
-    fun `최신 실적 연도 뒤에 신고된 생산실적 없음 제품은 판매 추정과 판매 추정 아님 사이다`() {
+    fun `최신 실적 연도 안이나 뒤에 신고된 생산실적 없음 제품은 판매 추정과 판매 추정 아님 사이다`() {
         // 최신 실적 연도는 저장된 production_year의 최댓값(2025)이다
         val onSale = product("루테인 골드", reportedOn = LocalDate.of(2015, 1, 1)).also { setProduction(it, 300) }
         val newProduct = product("루테인 플러스", reportedOn = LocalDate.of(2026, 3, 1))
-        // 브랜드 연결은 중립보다 뒤의 기준이다
-        val noSale = product("루테인 베이직", reportedOn = LocalDate.of(2020, 1, 1)).also { setProduction(it, 0); linkBrand(it, "애터미") }
-        // 최신 실적 연도 안에 신고됐는데 실적이 없으면 중립이 아니다
-        val unknownIn2025 = product("루테인 프리미엄", reportedOn = LocalDate.of(2025, 12, 31)).also { linkBrand(it, "애터미") }
+        // 최신 실적 연도 첫날(경계) 신고. 그해 실적 목록에 없으면 중립이다(연말 신고 제품이 이 경우)
+        val lateIn2025 = product("루테인 프리미엄", reportedOn = LocalDate.of(2025, 1, 1))
+        // 최신 실적 연도 전에 신고됐는데 실적이 없으면 중립이 아니다. 브랜드 연결은 중립보다 뒤의 기준이다
+        val unknownIn2024 = product("루테인 베이직", reportedOn = LocalDate.of(2024, 12, 31)).also { linkBrand(it, "애터미") }
+        // 생산 0으로 보고한 제품은 최신 실적 연도 안에 신고됐어도 중립이 아니다
+        val zeroIn2025 = product("루테인 라이트", reportedOn = LocalDate.of(2025, 6, 1)).also { setProduction(it, 0); linkBrand(it, "애터미") }
 
         mvc.get("/api/products") { param("q", "루테인") }.andExpect {
-            jsonPath("$.data.items[*].id") { value(contains(onSale.toInt(), newProduct.toInt(), unknownIn2025.toInt(), noSale.toInt())) }
+            jsonPath("$.data.items[*].id") {
+                value(contains(onSale.toInt(), newProduct.toInt(), lateIn2025.toInt(), zeroIn2025.toInt(), unknownIn2024.toInt()))
+            }
+        }
+    }
+
+    @Test
+    fun `생산실적을 한 번도 받지 않았으면 신제품도 중립이 아니다`() {
+        val newProduct = product("루테인 플러스", reportedOn = LocalDate.of(2026, 3, 1))
+        // 중립이 없으면 브랜드 연결이 신고일보다 앞서 이 제품이 먼저다
+        val old = product("루테인 베이직", reportedOn = LocalDate.of(2020, 1, 1)).also { linkBrand(it, "애터미") }
+
+        mvc.get("/api/products") { param("q", "루테인") }.andExpect {
+            jsonPath("$.data.items[*].id") { value(contains(old.toInt(), newProduct.toInt())) }
         }
     }
 
