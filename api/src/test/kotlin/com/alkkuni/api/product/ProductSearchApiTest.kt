@@ -303,6 +303,12 @@ class ProductSearchApiTest(
         mvc.get("/api/products") { param("q", "홍삼정 로얄(수출용)") }.andExpect {
             jsonPath("$.data.items[0].id") { value(exact.toInt()) }
         }
+        // 쇼핑몰에서 복사한 이름의 줄바꿈 없는 공백(NBSP)·전각 공백도 공백으로 본다
+        for (q in listOf("홍삼정\u00A0로얄(수출용)", "홍삼정\u3000로얄(수출용)")) {
+            mvc.get("/api/products") { param("q", q) }.andExpect {
+                jsonPath("$.data.items[0].id") { value(exact.toInt()) }
+            }
+        }
         // 정확 일치가 아니면 수출용은 여전히 뒤다
         mvc.get("/api/products") { param("q", "홍삼정") }.andExpect {
             jsonPath("$.data.items[*].id") { value(contains(onSale.toInt(), exact.toInt())) }

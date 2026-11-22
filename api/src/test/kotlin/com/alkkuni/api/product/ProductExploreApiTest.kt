@@ -279,6 +279,8 @@ class ProductExploreApiTest(
         expectField("sort", "ingredient" to "$zinc", "sort" to "popular")
         expectField("sort", "ingredient" to "$zinc", "sort" to "amount:${id("철")}")
         expectField("min", "ingredient" to "$zinc", "min" to "5", "max" to "1")
+        // 판매 추정은 국내용만이라 수출용만과 함께 쓰면 늘 빈 결과다. "제품 없음"처럼 보이지 않게 거절한다.
+        expectField("onSale", "ingredient" to "$zinc", "onSale" to "true", "market" to "export")
         // PostgreSQL numeric을 넘는 값이 DB까지 가 500이 되지 않는다.
         mvc.get("/api/products/explore") { param("ingredient", "$zinc"); param("min", "1e999999999") }.andExpect {
             status { isBadRequest() }

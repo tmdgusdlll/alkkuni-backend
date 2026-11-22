@@ -14,6 +14,7 @@ import com.alkkuni.core.product.repository.ProductCategoryRepository
 import com.alkkuni.core.product.repository.ProductExploreCondition
 import com.alkkuni.core.product.repository.ProductExploreRepository
 import com.alkkuni.core.product.repository.ProductExploreSort
+import com.alkkuni.core.product.repository.ProductMarket
 import org.springframework.stereotype.Service
 import java.math.BigDecimal
 
@@ -87,7 +88,10 @@ class ProductExploreService(
         } else {
             emptyList()
         }
-        val cond = ProductExploreCondition(ingredientIds, excludeIds, cleanForms, base, min, max, references, brandIds, parseMarket(market), category, onSale)
+        val productMarket = parseMarket(market)
+        // 판매 추정은 국내용만이라 수출용만과 함께 쓰면 늘 빈 결과다. 기준 충족처럼 "제품 없음"으로 보이지 않게 거절한다.
+        if (onSale && productMarket == ProductMarket.EXPORT) invalid("onSale", "판매 추정은 수출용만 보기와 함께 쓸 수 없습니다.")
+        val cond = ProductExploreCondition(ingredientIds, excludeIds, cleanForms, base, min, max, references, brandIds, productMarket, category, onSale)
 
         val result = exploreRepository.find(cond, searchSort, page, size)
         val amounts = exploreRepository.amounts(result.content.map { it.id }, ingredientIds)

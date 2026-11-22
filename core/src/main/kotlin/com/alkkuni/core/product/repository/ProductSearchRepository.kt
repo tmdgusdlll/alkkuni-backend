@@ -9,7 +9,7 @@ import java.sql.ResultSet
 import java.time.LocalDate
 
 enum class ProductSearchSort {
-    // 제품명·제조사 일치 먼저, 그다음 제품명 유사도
+    // 정확 일치 → 국내 → 브랜드 → 검색어 포함 → 오타 허용 → 성분 → 판매 추정 → 유사도 → 최신순(search의 exactFirst·order, PLANNING.md "노출 순서·판매 필터")
     RELEVANCE,
     // 신고일 최신순
     LATEST,
@@ -133,7 +133,7 @@ class ProductSearchRepository(private val jdbc: JdbcClient) {
     // 검색어가 성분 이름이면 쓰지 않는다. "비타민D"를 친 사람은 비타민D 제품을 찾는 것이고, 이름이 그냥 "비타민D"인 OEM 제품은
     // 대부분 생산하지 않아(로컬 10개 중 7개) 판매 추정 제품을 상위 20개에서 밀어낸다(PLANNING.md "노출 순서·판매 필터").
     private fun exactFirst(cond: ProductSearchCondition, sort: ProductSearchSort) =
-        if (sort == ProductSearchSort.RELEVANCE && cond.ingredientId == null) "(lower(replace(p.name, ' ', '')) = lower(replace(:q, ' ', ''))) DESC, " else ""
+        if (sort == ProductSearchSort.RELEVANCE && cond.ingredientId == null) "(lower(replace(p.name, ' ', '')) = lower(:exactName)) DESC, " else ""
 
     private fun similarity(cond: ProductSearchCondition) =
         if (cond.brandId != null) "CASE WHEN p.brand_id = :brandId THEN 1 ELSE word_similarity(:q, p.name) END" else "word_similarity(:q, p.name)"
@@ -175,6 +175,9 @@ class ProductSearchRepository(private val jdbc: JdbcClient) {
     // SQL에 없는 이름의 파라미터는 무시되므로 조건과 상관없이 모두 넘긴다.
     private fun params(spec: JdbcClient.StatementSpec, cond: ProductSearchCondition) = spec
         .param("q", cond.q)
+        // 검색어 쪽 공백은 모두 지운다. Kotlin isWhitespace는 NBSP·전각 공백도 공백으로 보고, 검색어 길이 규칙(ProductSearchCondition)과 같다.
+        // 제품명(식약처 원문)에는 특수 공백이 거의 없어 SQL에서는 일반 공백만 지운다.
+        .param("exactName", cond.q.filterNot { it.isWhitespace() })
         .param("pattern", "%${escapeLike(cond.q)}%")
         .param("ingredientId", cond.ingredientId)
         .param("brandId", cond.brandId)
