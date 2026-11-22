@@ -9,7 +9,7 @@ import java.sql.ResultSet
 import java.time.LocalDate
 
 enum class ProductSearchSort {
-    // 정확 일치 → 국내 → 브랜드 → 검색어 포함 → 오타 허용 → 성분 → 판매 추정 → 브랜드 연결 → 유사도 → 최신순(search의 exactFirst·order, PLANNING.md "노출 순서·판매 필터")
+    // 정확 일치 → 국내 → 브랜드 → 검색어 포함 → 오타 허용 → 성분 → 판매 추정 → 유사도 → 브랜드 연결 → 최신순(search의 exactFirst·order, PLANNING.md "노출 순서·판매 필터")
     RELEVANCE,
     // 신고일 최신순
     LATEST,
@@ -98,9 +98,9 @@ class ProductSearchRepository(private val jdbc: JdbcClient) {
         val order = when (sort) {
             // 정확 일치(OEM 이름을 그대로 친 경우)·브랜드·이름 일치는 검색 의도를 거의 틀리지 않으므로, 추정(정밀도 84%)인 판매 추정은 그 뒤에 둔다.
             // 판매 추정 = production_qty > 0 AND NOT export_only인데, 수출용은 앞의 export_only 정렬로 이미 뒤라 생산량만 본다. 생산실적 없음(NULL)과 생산 0은 같게 둔다.
-            // 그 안에서는 브랜드가 연결된 제품이 먼저다. 검색어를 포함한 판매 추정 제품끼리는 유사도가 같아 최신 신고순이 되므로,
+            // 유사도가 같으면 브랜드가 연결된 제품이 먼저다. 유사도보다 앞에 두면 제조사·오타 허용으로 걸린 브랜드 제품이 이름이 더 비슷한 제품을 앞지른다. 검색어를 포함한 판매 추정 제품끼리는 유사도가 같아 최신 신고순이 되므로,
             // 브랜드 없는 OEM 일반 이름 제품("100억 유산균 아연&비타민D")이 대표 제품보다 앞에 왔다(PLANNING.md "노출 순서·판매 필터").
-            ProductSearchSort.RELEVANCE -> "${brandFirst(cond)}p.match_rank DESC, (coalesce(p.production_qty, 0) > 0) DESC, (p.brand_id IS NOT NULL) DESC, ${similarity(cond)} DESC, p.reported_on DESC NULLS LAST"
+            ProductSearchSort.RELEVANCE -> "${brandFirst(cond)}p.match_rank DESC, (coalesce(p.production_qty, 0) > 0) DESC, ${similarity(cond)} DESC, (p.brand_id IS NOT NULL) DESC, p.reported_on DESC NULLS LAST"
             ProductSearchSort.LATEST -> "p.reported_on DESC NULLS LAST"
             ProductSearchSort.AMOUNT -> "${unitOrder(sortKey("a.daily_unit"))}${sortKey("a.daily_amount")} DESC NULLS LAST"
         }
