@@ -381,6 +381,21 @@ class ProductSearchApiTest(
     }
 
     @Test
+    fun `최신 실적 연도 뒤에 신고된 생산실적 없음 제품은 판매 추정과 판매 추정 아님 사이다`() {
+        // 최신 실적 연도는 저장된 production_year의 최댓값(2025)이다
+        val onSale = product("루테인 골드", reportedOn = LocalDate.of(2015, 1, 1)).also { setProduction(it, 300) }
+        val newProduct = product("루테인 플러스", reportedOn = LocalDate.of(2026, 3, 1))
+        // 브랜드 연결은 중립보다 뒤의 기준이다
+        val noSale = product("루테인 베이직", reportedOn = LocalDate.of(2020, 1, 1)).also { setProduction(it, 0); linkBrand(it, "애터미") }
+        // 최신 실적 연도 안에 신고됐는데 실적이 없으면 중립이 아니다
+        val unknownIn2025 = product("루테인 프리미엄", reportedOn = LocalDate.of(2025, 12, 31)).also { linkBrand(it, "애터미") }
+
+        mvc.get("/api/products") { param("q", "루테인") }.andExpect {
+            jsonPath("$.data.items[*].id") { value(contains(onSale.toInt(), newProduct.toInt(), unknownIn2025.toInt(), noSale.toInt())) }
+        }
+    }
+
+    @Test
     fun `제품 이미지 URL을 붙이고 없으면 null이다`() {
         product("유산균 골드", reportedOn = LocalDate.of(2026, 1, 1)).also { setImage(it, "https://image.example.com/a.jpg") }
         product("유산균 베이직", reportedOn = LocalDate.of(2020, 1, 1))
