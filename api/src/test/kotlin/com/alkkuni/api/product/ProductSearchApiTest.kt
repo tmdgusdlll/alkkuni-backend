@@ -327,6 +327,30 @@ class ProductSearchApiTest(
     }
 
     @Test
+    fun `판매 추정 제품 안에서는 브랜드가 연결된 제품이 먼저다`() {
+        // 실제 "비타민D": 최신 신고순이라 브랜드 없는 OEM 일반 이름 제품("100억 유산균 아연&비타민D")이 1위였다.
+        val oemNew = product("100억 유산균 아연&비타민D", reportedOn = LocalDate.of(2025, 12, 5)).also { setProduction(it, 241) }
+        val brandOld = product("여에스더 비타민D 1000IU", reportedOn = LocalDate.of(2019, 1, 1)).also { setProduction(it, 5000); linkBrand(it, "애터미") }
+        // 브랜드가 있어도 판매 추정이 아니면 판매 추정 제품 뒤다
+        val brandNoSale = product("애터미 비타민D", reportedOn = LocalDate.of(2026, 1, 1)).also { setProduction(it, 0); linkBrand(it, "애터미") }
+
+        mvc.get("/api/products") { param("q", "비타민D") }.andExpect {
+            jsonPath("$.data.items[*].id") { value(contains(brandOld.toInt(), oemNew.toInt(), brandNoSale.toInt())) }
+        }
+    }
+
+    @Test
+    fun `브랜드 연결은 유사도가 같을 때만 가른다`() {
+        // 제조사로 걸린 브랜드 제품(제품명 유사도 0에 가까움)이 제품명에 검색어가 그대로 든 브랜드 없는 제품을 앞지르지 않는다.
+        val byName = product("노바렉스 비타민", reportedOn = LocalDate.of(2015, 1, 1)).also { setProduction(it, 100) }
+        val byManufacturer = product("ATOMY 헤모힘", manufacturer = "(주)노바렉스", reportedOn = LocalDate.of(2026, 1, 1)).also { setProduction(it, 100); linkBrand(it, "애터미") }
+
+        mvc.get("/api/products") { param("q", "노바렉스") }.andExpect {
+            jsonPath("$.data.items[*].id") { value(contains(byName.toInt(), byManufacturer.toInt())) }
+        }
+    }
+
+    @Test
     fun `검색어가 성분 이름이면 제품명 정확 일치를 앞에 두지 않는다`() {
         // 이름이 그냥 "아연"인 생산 0 제품보다 판매 추정 제품이 앞이다.
         val exactNoSale = product("아연", reportedOn = LocalDate.of(2026, 1, 1)).also { setProduction(it, 0) }
