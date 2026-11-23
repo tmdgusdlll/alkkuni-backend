@@ -418,6 +418,19 @@ class ProductSearchApiTest(
     }
 
     @Test
+    fun `생산 0 중립 기준일은 최신 실적 연도를 따라 움직인다`() {
+        // 2026년 실적이 들어오면 기준일이 2026-07-01이 되어, 2025 하반기 신고·생산 0 제품은 중립에서 빠진다
+        val onSale = product("루테인 골드", reportedOn = LocalDate.of(2015, 1, 1)).also { setProduction(it, 300, year = 2026) }
+        val newProduct = product("루테인 플러스", reportedOn = LocalDate.of(2026, 2, 1))
+        // 브랜드 연결은 중립보다 뒤의 기준이다. 기준일이 상수(2025-07-01)로 고정돼 있으면 이 제품이 중립에 남아 앞으로 온다
+        val zeroLastYear = product("루테인 라이트", reportedOn = LocalDate.of(2025, 8, 1)).also { setProduction(it, 0); linkBrand(it, "애터미") }
+
+        mvc.get("/api/products") { param("q", "루테인") }.andExpect {
+            jsonPath("$.data.items[*].id") { value(contains(onSale.toInt(), newProduct.toInt(), zeroLastYear.toInt())) }
+        }
+    }
+
+    @Test
     fun `생산실적을 한 번도 받지 않았으면 신제품도 중립이 아니다`() {
         val newProduct = product("루테인 플러스", reportedOn = LocalDate.of(2026, 3, 1))
         // 중립이 없으면 브랜드 연결이 신고일보다 앞서 이 제품이 먼저다
@@ -453,8 +466,8 @@ class ProductSearchApiTest(
         jdbc.update("UPDATE product SET brand_id = (SELECT id FROM brand WHERE name = ?) WHERE id = ?", brandName, productId)
     }
 
-    private fun setProduction(productId: Long, qty: Long) {
-        jdbc.update("UPDATE product SET production_year = 2025, production_qty = ? WHERE id = ?", qty, productId)
+    private fun setProduction(productId: Long, qty: Long, year: Int = 2025) {
+        jdbc.update("UPDATE product SET production_year = ?, production_qty = ? WHERE id = ?", year, qty, productId)
     }
 
     private fun setImage(productId: Long, url: String) {
