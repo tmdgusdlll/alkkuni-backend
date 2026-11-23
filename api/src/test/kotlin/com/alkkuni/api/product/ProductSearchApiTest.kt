@@ -390,7 +390,7 @@ class ProductSearchApiTest(
         val lateIn2025 = product("루테인 프리미엄", reportedOn = LocalDate.of(2025, 1, 1))
         // 최신 실적 연도 전에 신고됐는데 실적이 없으면 중립이 아니다. 브랜드 연결은 중립보다 뒤의 기준이다
         val unknownIn2024 = product("루테인 베이직", reportedOn = LocalDate.of(2024, 12, 31)).also { linkBrand(it, "애터미") }
-        // 생산 0으로 보고한 제품은 최신 실적 연도 안에 신고됐어도 중립이 아니다
+        // 생산 0으로 보고한 제품은 최신 실적 연도 상반기에 신고됐으면 중립이 아니다
         val zeroIn2025 = product("루테인 라이트", reportedOn = LocalDate.of(2025, 6, 1)).also { setProduction(it, 0); linkBrand(it, "애터미") }
 
         mvc.get("/api/products") { param("q", "루테인") }.andExpect {
@@ -401,15 +401,19 @@ class ProductSearchApiTest(
     }
 
     @Test
-    fun `최신 실적 연도 뒤에 신고됐는데 그해 생산 0으로 실린 제품도 중립이다`() {
+    fun `최신 실적 연도 하반기 이후에 신고됐는데 생산 0으로 실린 제품도 중립이다`() {
         // 2025년 실적은 2026년 초에 제출돼, 그때 이미 신고된 2026년 제품이 생산 0으로 실린다(운영 2026-01·02 신고 약 530개)
         val onSale = product("루테인 골드", reportedOn = LocalDate.of(2015, 1, 1)).also { setProduction(it, 300) }
         val zeroAfter = product("루테인 플러스", reportedOn = LocalDate.of(2026, 1, 5)).also { setProduction(it, 0) }
-        // 브랜드 연결은 중립보다 뒤의 기준이다. 최신 실적 연도 안에 신고하고 0을 보고한 제품은 중립이 아니다(표본 확인 뒤 정함)
-        val zeroIn2025 = product("루테인 라이트", reportedOn = LocalDate.of(2025, 12, 31)).also { setProduction(it, 0); linkBrand(it, "애터미") }
+        // 최신 실적 연도 하반기 첫날(경계) 신고·생산 0도 중립이다(표본 판매 확인 하반기 10/20, 2026-11-23)
+        val zeroSecondHalf = product("루테인 라이트", reportedOn = LocalDate.of(2025, 7, 1)).also { setProduction(it, 0) }
+        // 상반기 신고·생산 0은 중립이 아니다(표본 판매 확인 1/20). 브랜드 연결은 중립보다 뒤의 기준이다
+        val zeroFirstHalf = product("루테인 베이직", reportedOn = LocalDate.of(2025, 6, 30)).also { setProduction(it, 0); linkBrand(it, "애터미") }
 
         mvc.get("/api/products") { param("q", "루테인") }.andExpect {
-            jsonPath("$.data.items[*].id") { value(contains(onSale.toInt(), zeroAfter.toInt(), zeroIn2025.toInt())) }
+            jsonPath("$.data.items[*].id") {
+                value(contains(onSale.toInt(), zeroAfter.toInt(), zeroSecondHalf.toInt(), zeroFirstHalf.toInt()))
+            }
         }
     }
 
