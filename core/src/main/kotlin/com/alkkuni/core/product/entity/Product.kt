@@ -135,7 +135,7 @@ class Product(
         protected set
 
     // 공개된 최신 연도 생산실적(V20, I0310). `alkkuni.job=production`만 SQL로 쓰므로 엔티티 저장이 덮지 않게 읽기 전용이다.
-    // 판매 추정 = productionQty > 0 AND NOT exportOnly(PLANNING.md "판매 추정 규칙").
+    // 판매 추정 = productionQty > 0 AND NOT exportOnly AND 섭취방법 있음(PLANNING.md "판매 추정 규칙").
     @Column(insertable = false, updatable = false)
     var productionQty: Long? = null
         protected set

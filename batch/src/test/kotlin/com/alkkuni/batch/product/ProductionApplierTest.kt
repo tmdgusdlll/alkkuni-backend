@@ -41,16 +41,17 @@ class ProductionApplierTest(
         product("2")
         product("3", exportOnly = true)
         val stale = product("4")
+        product("5", intakeMethod = null)
         jdbc.update("UPDATE product SET production_year = 2024, production_qty = 99 WHERE id = ?", stale)
 
-        val result = applier.apply(2025, mapOf("1" to 10L, "2" to 0L, "3" to 5L, "없는번호" to 7L))
+        val result = applier.apply(2025, mapOf("1" to 10L, "2" to 0L, "3" to 5L, "5" to 8L, "없는번호" to 7L))
 
         assertEquals(2025 to 10L, productionOf("1"))
         assertEquals(2025 to 0L, productionOf("2"))
         assertEquals(null to null, productionOf("4"))
-        assertEquals(3, result.updated)
+        assertEquals(4, result.updated)
         assertEquals(1, result.cleared)
-        // 생산량 > 0 인 1·3 중 수출용 3은 빠진다.
+        // 생산량 > 0 인 1·3·5 중 수출용 3과 섭취방법 빈 5는 빠진다.
         assertEquals(1, result.estimated)
     }
 
@@ -64,13 +65,13 @@ class ProductionApplierTest(
         assertEquals(1, applier.apply(2025, mapOf("1" to 10L, "2" to 4L)).updated)
     }
 
-    private fun product(reportNo: String, exportOnly: Boolean = false): Long = jdbc.queryForObject(
+    private fun product(reportNo: String, exportOnly: Boolean = false, intakeMethod: String? = "1일 1회, 1회 1정"): Long = jdbc.queryForObject(
         """
-        INSERT INTO product (report_no, name, raw_material, status, parse_status, parser_version, export_only)
-        VALUES (?, ?, false, 'ACTIVE', 'PARSED', '1', ?) RETURNING id
+        INSERT INTO product (report_no, name, raw_material, status, parse_status, parser_version, export_only, intake_method)
+        VALUES (?, ?, false, 'ACTIVE', 'PARSED', '1', ?, ?) RETURNING id
         """,
         Long::class.java,
-        reportNo, "제품$reportNo", exportOnly,
+        reportNo, "제품$reportNo", exportOnly, intakeMethod,
     )!!
 
     private fun productionOf(reportNo: String): Pair<Int?, Long?> = jdbc.queryForObject(

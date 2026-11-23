@@ -418,6 +418,35 @@ class ProductSearchApiTest(
     }
 
     @Test
+    fun `섭취방법이 빈 제품은 생산량이 있어도 판매 추정이 아니다`() {
+        // 표본 30개 중 소비자 판매 확인 1개, 원료 확인 17개(2026-11-23). 대부분 B2B 원료라 판매 추정 앞자리를 차지하지 않게 한다
+        val onSale = product("홍삼농축액 골드", reportedOn = LocalDate.of(2015, 1, 1)).also { setProduction(it, 300) }
+        // 브랜드 연결은 판매 추정보다 뒤의 기준이다. 섭취방법 빈 값을 판매 추정으로 보면 이 제품들이 앞으로 온다
+        val blank = product("홍삼농축액 10", reportedOn = LocalDate.of(2015, 1, 1), intakeMethod = null)
+            .also { setProduction(it, 9000); linkBrand(it, "애터미") }
+        val spaces = product("홍삼농축액 20", reportedOn = LocalDate.of(2014, 1, 1), intakeMethod = "  ")
+            .also { setProduction(it, 9000); linkBrand(it, "애터미") }
+
+        mvc.get("/api/products") { param("q", "홍삼농축액") }.andExpect {
+            jsonPath("$.data.items[*].id") { value(contains(onSale.toInt(), blank.toInt(), spaces.toInt())) }
+        }
+    }
+
+    @Test
+    fun `섭취방법이 빈 신제품도 중립이 아니다`() {
+        // 원료일 가능성은 생산 여부와 상관없다. 중립에 두면 생산량이 있는 섭취방법 빈 제품(판매 추정 아님)보다 앞에 온다
+        val onSale = product("루테인 골드", reportedOn = LocalDate.of(2015, 1, 1)).also { setProduction(it, 300) }
+        // 브랜드 연결은 중립보다 뒤의 기준이다. 섭취방법 빈 신제품이 중립이면 이 제품보다 앞으로 온다
+        val noSale = product("루테인 베이직", reportedOn = LocalDate.of(2015, 1, 1)).also { setProduction(it, 0); linkBrand(it, "애터미") }
+        val blankNew = product("루테인 분말", reportedOn = LocalDate.of(2026, 2, 1), intakeMethod = null)
+        val blankZeroSecondHalf = product("루테인 원료", reportedOn = LocalDate.of(2025, 8, 1), intakeMethod = " ").also { setProduction(it, 0) }
+
+        mvc.get("/api/products") { param("q", "루테인") }.andExpect {
+            jsonPath("$.data.items[*].id") { value(contains(onSale.toInt(), noSale.toInt(), blankNew.toInt(), blankZeroSecondHalf.toInt())) }
+        }
+    }
+
+    @Test
     fun `생산 0 중립 기준일은 최신 실적 연도를 따라 움직인다`() {
         // 2026년 실적이 들어오면 기준일이 2026-07-01이 되어, 2025 하반기 신고·생산 0 제품은 중립에서 빠진다
         val onSale = product("루테인 골드", reportedOn = LocalDate.of(2015, 1, 1)).also { setProduction(it, 300, year = 2026) }
@@ -482,13 +511,14 @@ class ProductSearchApiTest(
         status: String = "ACTIVE",
         parseStatus: String = "PARSED",
         basisCheck: String? = null,
+        intakeMethod: String? = "1일 1회, 1회 1정",
     ): Long = jdbc.queryForObject(
         """
-        INSERT INTO product (report_no, name, manufacturer, raw_material, status, parse_status, parser_version, reported_on, basis_check, export_only)
-        VALUES (?, ?, ?, ?, ?, ?, '1', ?, ?, ?) RETURNING id
+        INSERT INTO product (report_no, name, manufacturer, raw_material, status, parse_status, parser_version, reported_on, basis_check, export_only, intake_method)
+        VALUES (?, ?, ?, ?, ?, ?, '1', ?, ?, ?, ?) RETURNING id
         """,
         Long::class.java,
-        "R${seq++}", name, manufacturer, rawMaterial, status, parseStatus, reportedOn, basisCheck, ExportName.isExportOnly(name),
+        "R${seq++}", name, manufacturer, rawMaterial, status, parseStatus, reportedOn, basisCheck, ExportName.isExportOnly(name), intakeMethod,
     )!!
 
     private fun ingredient(productId: Long, ingredientName: String, dailyAmount: String?, unit: String = "mg") {

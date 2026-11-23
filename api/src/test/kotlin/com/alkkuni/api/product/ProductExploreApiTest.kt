@@ -347,19 +347,21 @@ class ProductExploreApiTest(
     }
 
     @Test
-    fun `onSale=true면 판매 추정 제품(생산실적 0 초과·국내용)만 낸다`() {
-        // 메인 인기 성분 카드용. 생산 0, 생산실적 없음, 생산했지만 수출용인 제품은 빠진다.
+    fun `onSale=true면 판매 추정 제품(생산실적 0 초과·국내용·섭취방법 있음)만 낸다`() {
+        // 메인 인기 성분 카드용. 생산 0, 생산실적 없음, 생산했지만 수출용이거나 섭취방법이 빈(대부분 원료) 제품은 빠진다.
         val onSale = product("아연 베이직").also { has(it, "아연", "8"); setProduction(it, 100) }
         product("아연 단종").also { has(it, "아연", "30"); setProduction(it, 0) }
         product("아연 미상").also { has(it, "아연", "20") }
         product("아연 골드(수출용)").also { has(it, "아연", "15"); setProduction(it, 500) }
+        product("아연 분말", intakeMethod = null).also { has(it, "아연", "40"); setProduction(it, 800) }
+        product("아연 원료", intakeMethod = " ").also { has(it, "아연", "45"); setProduction(it, 900) }
 
         mvc.get("/api/products/explore") { param("ingredient", "${id("아연")}"); param("onSale", "true") }.andExpect {
             jsonPath("$.data.totalCount") { value(1) }
             jsonPath("$.data.items[*].id") { value(contains(onSale.toInt())) }
         }
         mvc.get("/api/products/explore") { param("ingredient", "${id("아연")}") }.andExpect {
-            jsonPath("$.data.totalCount") { value(4) }
+            jsonPath("$.data.totalCount") { value(6) }
         }
     }
 
@@ -482,13 +484,14 @@ class ProductExploreApiTest(
         rawMaterial: Boolean = false,
         status: String = "ACTIVE",
         functionalMaterials: String? = null,
+        intakeMethod: String? = "1일 1회, 1회 1정",
     ): Long = jdbc.queryForObject(
         """
-        INSERT INTO product (report_no, name, raw_material, status, parse_status, parser_version, reported_on, form, export_only, functional_materials)
-        VALUES (?, ?, ?, ?, 'PARSED', '1', ?, ?, ?, ?) RETURNING id
+        INSERT INTO product (report_no, name, raw_material, status, parse_status, parser_version, reported_on, form, export_only, functional_materials, intake_method)
+        VALUES (?, ?, ?, ?, 'PARSED', '1', ?, ?, ?, ?, ?) RETURNING id
         """,
         Long::class.java,
-        "R${seq++}", name, rawMaterial, status, reportedOn, form, ExportName.isExportOnly(name), functionalMaterials,
+        "R${seq++}", name, rawMaterial, status, reportedOn, form, ExportName.isExportOnly(name), functionalMaterials, intakeMethod,
     )!!
 
     private fun has(productId: Long, ingredientName: String, dailyAmount: String?, unit: String = "mg") {

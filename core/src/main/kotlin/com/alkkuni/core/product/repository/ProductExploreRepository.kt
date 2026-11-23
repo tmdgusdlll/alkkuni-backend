@@ -157,7 +157,11 @@ class ProductExploreRepository(
             ProductMarket.DOMESTIC -> path(Product::exportOnly).eq(false)
             ProductMarket.EXPORT -> path(Product::exportOnly).eq(true)
         },
-        if (cond.onSale) and(path(Product::productionQty).gt(0L), path(Product::exportOnly).eq(false)) else null,
+        if (cond.onSale) {
+            and(path(Product::productionQty).gt(0L), path(Product::exportOnly).eq(false), trim(path(Product::intakeMethod)).ne(""))
+        } else {
+            null
+        },
         // 범위는 주 단위 값에만 건다. 둘 다 있으면 서브쿼리 하나(between)로 계산한다.
         when {
             cond.min != null && cond.max != null -> mainAmount(requireNotNull(cond.base), "rng").between(cond.min, cond.max)
