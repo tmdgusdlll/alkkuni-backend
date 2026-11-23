@@ -38,11 +38,11 @@ class ProductionApplier(private val jdbc: JdbcTemplate) {
               AND NOT EXISTS (SELECT 1 FROM production_in i WHERE i.report_no = product.report_no)
             """,
         )
-        // 화면이 쓰는 기준(원료 제외, 수출용 제외)의 판매 추정 수. 로그로 전후를 비교한다.
+        // 화면이 쓰는 기준(원료 제외, 수출용 제외, 섭취방법 빈 값 제외)의 판매 추정 수. 로그로 전후를 비교한다.
         val estimated = jdbc.queryForObject(
             """
             SELECT count(*) FROM product
-            WHERE production_qty > 0 AND NOT export_only AND NOT raw_material AND status = 'ACTIVE'
+            WHERE production_qty > 0 AND NOT export_only AND NOT raw_material AND status = 'ACTIVE' AND btrim(intake_method) <> ''
             """,
             Long::class.java,
         )!!

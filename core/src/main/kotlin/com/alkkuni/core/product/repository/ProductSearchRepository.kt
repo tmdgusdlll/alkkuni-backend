@@ -97,7 +97,7 @@ class ProductSearchRepository(private val jdbc: JdbcClient) {
         }
         val order = when (sort) {
             // 정확 일치(OEM 이름을 그대로 친 경우)·브랜드·이름 일치는 검색 의도를 거의 틀리지 않으므로, 추정(정밀도 84%)인 판매 추정은 그 뒤에 둔다.
-            // 판매 추정 = production_qty > 0 AND NOT export_only인데, 수출용은 앞의 export_only 정렬로 이미 뒤라 생산량만 본다. 생산실적 없음(NULL)과 생산 0은 같게 둔다.
+            // 판매 추정 = production_qty > 0 AND NOT export_only AND 섭취방법 있음인데, 수출용은 앞의 export_only 정렬로 이미 뒤라 나머지만 본다. 생산실적 없음(NULL)과 생산 0은 같게 둔다.
             // 단, 아직 실적이 공개되지 않은 신제품(최신 실적 연도 안이나 뒤 신고·실적 없음, 또는 연도 하반기 이후 신고·생산 0)은 판매 추정과 판매 추정 아님 사이(중립)에 둔다(salesTier).
             // 유사도가 같으면 브랜드가 연결된 제품이 먼저다. 유사도보다 앞에 두면 제조사·오타 허용으로 걸린 브랜드 제품이 이름이 더 비슷한 제품을 앞지른다. 검색어를 포함한 판매 추정 제품끼리는 유사도가 같아 최신 신고순이 되므로,
             // 브랜드 없는 OEM 일반 이름 제품("100억 유산균 아연&비타민D")이 대표 제품보다 앞에 왔다(PLANNING.md "노출 순서·판매 필터").
@@ -136,8 +136,9 @@ class ProductSearchRepository(private val jdbc: JdbcClient) {
     // 실적 없음(NULL)은 상반기 신고도 중립으로 둔다. 회사가 0을 보고한 것과 달리 실적 목록에 아직 없는 것이라 판매 여부를 모르고,
     // 로컬 약 23개뿐이라 따로 표본을 보지 않았다.
     // 생산실적을 한 번도 받지 않았으면(최댓값 NULL) 신제품도 0이다. 비상관 서브쿼리라 쿼리당 한 번만 계산된다.
+    // 섭취방법이 빈 제품은 생산량이 있어도 판매 추정이 아니다. 표본 30개 중 원료(B2B 납품용) 확인 17개, 소비자 판매 확인 1개였다(2026-11-23).
     private val salesTier = """
-        CASE WHEN p.production_qty > 0 THEN 2
+        CASE WHEN p.production_qty > 0 AND btrim(p.intake_method) <> '' THEN 2
              WHEN p.production_qty IS NULL AND p.reported_on >= make_date((SELECT max(production_year) FROM product), 1, 1) THEN 1
              WHEN p.production_qty = 0 AND p.reported_on >= make_date((SELECT max(production_year) FROM product), 7, 1) THEN 1
              ELSE 0 END
@@ -181,7 +182,7 @@ class ProductSearchRepository(private val jdbc: JdbcClient) {
         )
         return """
             WITH hit AS (
-                SELECT p.id, p.name, p.manufacturer, p.form, p.reported_on, p.basis_check, p.parse_status, p.brand_id, p.export_only, p.image_url, p.production_qty,
+                SELECT p.id, p.name, p.manufacturer, p.form, p.reported_on, p.basis_check, p.parse_status, p.brand_id, p.export_only, p.image_url, p.production_qty, p.intake_method,
                        max(h.match_rank) AS match_rank
                 FROM (${sources.joinToString(" UNION ALL ")}) h
                 JOIN product p ON p.id = h.id
