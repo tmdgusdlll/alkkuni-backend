@@ -353,14 +353,15 @@ class ProductExploreApiTest(
         product("아연 단종").also { has(it, "아연", "30"); setProduction(it, 0) }
         product("아연 미상").also { has(it, "아연", "20") }
         product("아연 골드(수출용)").also { has(it, "아연", "15"); setProduction(it, 500) }
-        product("아연 분말", intakeMethod = " ").also { has(it, "아연", "40"); setProduction(it, 800) }
+        product("아연 분말", intakeMethod = null).also { has(it, "아연", "40"); setProduction(it, 800) }
+        product("아연 원료", intakeMethod = " ").also { has(it, "아연", "45"); setProduction(it, 900) }
 
         mvc.get("/api/products/explore") { param("ingredient", "${id("아연")}"); param("onSale", "true") }.andExpect {
             jsonPath("$.data.totalCount") { value(1) }
             jsonPath("$.data.items[*].id") { value(contains(onSale.toInt())) }
         }
         mvc.get("/api/products/explore") { param("ingredient", "${id("아연")}") }.andExpect {
-            jsonPath("$.data.totalCount") { value(5) }
+            jsonPath("$.data.totalCount") { value(6) }
         }
     }
 
