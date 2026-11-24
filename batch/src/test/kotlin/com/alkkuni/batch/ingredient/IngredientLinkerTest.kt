@@ -111,6 +111,18 @@ class IngredientLinkerTest(
         }
     }
 
+    @Test
+    fun `원문 성분명이 밀크씨슬이면 실리마린으로 연결한다`() {
+        // 실제 원문(아비스모 면역n간): 원료 이름 뒤에 지표 성분(실리마린) 표시량을 적었다(V23)
+        upserter.upsert(listOf(row("(2) 밀크씨슬 : 실리마린 표시량(130mg/500mg)의 80%이상 120% 이하")))
+
+        val linked = jdbc.queryForObject(
+            "SELECT i.name FROM product_ingredient pi JOIN ingredient i ON i.id = pi.ingredient_id WHERE pi.raw_name = '밀크씨슬'",
+            String::class.java,
+        )
+        assertEquals("실리마린", linked)
+    }
+
     private fun vitaminDDaily(): Pair<BigDecimal, String>? =
         jdbc.queryForObject("SELECT daily_amount, daily_unit FROM product_ingredient WHERE unit = 'IU'") { rs, _ ->
             rs.getBigDecimal(1)?.let { it.stripTrailingZeros() to rs.getString(2) }

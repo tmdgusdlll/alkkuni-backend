@@ -96,16 +96,22 @@ class ProductSearchApiTest(
     @Test
     fun `밀크씨슬·오메가3는 원료 이름이지만 대표 지표 성분(실리마린, EPA와 DHA의 합)으로 찾는다`() {
         // 성분 사전에는 고시 지표 성분 이름만 있어, 흔한 원료 이름 검색어가 성분으로 걸리지 않았다(V23).
-        val silymarin = product("간 건강 골드")
+        // 이름이 그냥 "밀크씨슬"인 생산 0 OEM 제품이 정확 일치로 맨 위를 차지하던 문제다
+        val exactNoSale = product("밀크씨슬").also { setProduction(it, 0) }
+        val silymarin = product("간 건강 밀크씨슬 골드").also { setProduction(it, 5000) }
         ingredient(silymarin, "실리마린", "130")
+        val silymarinOnly = product("간 건강 골드") // 이름에 검색어가 없어도 성분으로 걸린다
+        ingredient(silymarinOnly, "실리마린", "130")
         val epaDha = product("rTG 피쉬오일")
         ingredient(epaDha, "EPA와 DHA의 합", "600")
 
-        for (q in listOf("밀크씨슬", "밀크시슬")) {
-            mvc.get("/api/products") { param("q", q) }.andExpect {
-                jsonPath("$.data.matchedIngredient.name") { value("실리마린") }
-                jsonPath("$.data.items[*].id") { value(contains(silymarin.toInt())) }
-            }
+        mvc.get("/api/products") { param("q", "밀크씨슬") }.andExpect {
+            jsonPath("$.data.matchedIngredient.name") { value("실리마린") }
+            jsonPath("$.data.items[*].id") { value(contains(silymarin.toInt(), exactNoSale.toInt(), silymarinOnly.toInt())) }
+        }
+        mvc.get("/api/products") { param("q", "밀크시슬") }.andExpect {
+            jsonPath("$.data.matchedIngredient.name") { value("실리마린") }
+            jsonPath("$.data.items[*].id") { value(containsInAnyOrder(silymarin.toInt(), silymarinOnly.toInt())) }
         }
         for (q in listOf("오메가3", "오메가-3")) {
             mvc.get("/api/products") { param("q", q) }.andExpect {
