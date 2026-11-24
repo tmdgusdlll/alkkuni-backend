@@ -94,6 +94,28 @@ class ProductSearchApiTest(
     }
 
     @Test
+    fun `밀크씨슬·오메가3는 원료 이름이지만 대표 지표 성분(실리마린, EPA와 DHA의 합)으로 찾는다`() {
+        // 성분 사전에는 고시 지표 성분 이름만 있어, 흔한 원료 이름 검색어가 성분으로 걸리지 않았다(V23).
+        val silymarin = product("간 건강 골드")
+        ingredient(silymarin, "실리마린", "130")
+        val epaDha = product("rTG 피쉬오일")
+        ingredient(epaDha, "EPA와 DHA의 합", "600")
+
+        for (q in listOf("밀크씨슬", "밀크시슬")) {
+            mvc.get("/api/products") { param("q", q) }.andExpect {
+                jsonPath("$.data.matchedIngredient.name") { value("실리마린") }
+                jsonPath("$.data.items[*].id") { value(contains(silymarin.toInt())) }
+            }
+        }
+        for (q in listOf("오메가3", "오메가-3")) {
+            mvc.get("/api/products") { param("q", q) }.andExpect {
+                jsonPath("$.data.matchedIngredient.name") { value("EPA와 DHA의 합") }
+                jsonPath("$.data.items[*].id") { value(contains(epaDha.toInt())) }
+            }
+        }
+    }
+
+    @Test
     fun `1자 검색어는 성분명과 정확히 일치할 때만 받고 성분으로만 찾는다`() {
         val iron = product("멀티미네랄")
         ingredient(iron, "철", "12")
