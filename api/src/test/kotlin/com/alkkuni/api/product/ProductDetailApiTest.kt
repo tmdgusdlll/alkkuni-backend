@@ -154,6 +154,7 @@ class ProductDetailApiTest(
             // 화면이 "기준 8.5mg"을 함께 보여준다. 사전에 없는 성분은 null
             jsonPath("$.data.ingredients[0].referenceAmount") { value(8.5) }
             jsonPath("$.data.ingredients[0].referenceUnit") { value("mg") }
+            jsonPath("$.data.ingredients[0].displayUnit") { value(null as Any?) }
             jsonPath("$.data.ingredients[3].referenceAmount") { value(null as Any?) }
         }
     }

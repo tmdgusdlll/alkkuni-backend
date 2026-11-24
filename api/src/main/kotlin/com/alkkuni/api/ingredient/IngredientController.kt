@@ -35,6 +35,8 @@ data class IngredientItem(
     // 1일 기준값과 단위. null이면 기준값이 없어 성분별 제품 목록의 "기준 충족"(meetsReference)을 켤 수 없다.
     val referenceAmount: BigDecimal?,
     val referenceUnit: String?,
+    // 화면 표시 단위("μg"). mg 값을 이 단위로 바꿔 보여준다. null이면 받은 단위 그대로. 환산 표기(DFE·RAE)는 값의 단위에서 이어 붙인다.
+    val displayUnit: String?,
 )
 
 fun Ingredient.toItem() = IngredientItem(
@@ -44,4 +46,5 @@ fun Ingredient.toItem() = IngredientItem(
     defaultUnit = defaultUnit,
     referenceAmount = referenceAmount,
     referenceUnit = referenceUnit,
+    displayUnit = displayUnit,
 )

@@ -54,6 +54,7 @@ class ProductSearchApiTest(
             status { isOk() }
             jsonPath("$.data.totalCount") { value(3) }
             jsonPath("$.data.matchedIngredient.name") { value("아연") }
+            jsonPath("$.data.matchedIngredient.displayUnit") { value(null as Any?) }
             jsonPath("$.data.items[*].id") { value(contains(byName.toInt(), byManufacturer.toInt(), byIngredient.toInt())) }
             jsonPath("$.data.items[2].dailyAmount") { value(8.5) }
             jsonPath("$.data.items[2].dailyUnit") { value("mg") }
