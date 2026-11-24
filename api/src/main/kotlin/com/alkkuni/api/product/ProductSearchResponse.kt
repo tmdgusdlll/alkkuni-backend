@@ -20,6 +20,8 @@ data class ProductSearchResponse(
 data class MatchedIngredient(
     val id: Long,
     val name: String,
+    // 검색 결과 dailyAmount의 화면 표시 단위("μg"). mg 값을 이 단위로 바꿔 보여준다. null이면 받은 단위 그대로. 환산 표기(DFE·RAE)는 값의 단위에서 이어 붙인다.
+    val displayUnit: String?,
 )
 
 data class ProductSearchItem(
@@ -46,7 +48,7 @@ data class ProductSearchItem(
     val exceedsUpperLimit: Boolean,
 )
 
-fun Ingredient.toMatchedIngredient() = MatchedIngredient(id = requireNotNull(id), name = displayName)
+fun Ingredient.toMatchedIngredient() = MatchedIngredient(id = requireNotNull(id), name = displayName, displayUnit = displayUnit)
 
 fun ProductSearchRow.toItem(ingredient: Ingredient?, brand: BrandRef?) = ProductSearchItem(
     id = id,

@@ -41,6 +41,10 @@ class Ingredient(
     var defaultUnit: String? = null
         protected set
 
+    // 화면에 함량을 보여줄 질량 단위("μg"). null이면 저장 단위(mg) 그대로. 저장·계산 단위는 바꾸지 않는다(V22).
+    var displayUnit: String? = null
+        protected set
+
     // IU → mg 환산 배율(1mg = iuPerMg IU). 성분마다 달라 사전에 둔다. 모르면 null(IU 함량의 1일 함량도 null).
     var iuPerMg: BigDecimal? = null
         protected set

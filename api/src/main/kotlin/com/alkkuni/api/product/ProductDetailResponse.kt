@@ -61,6 +61,8 @@ data class DetailIngredient(
     // 1일 기준값과 단위(성분 목록 API와 같음). 기준값이 없는 성분이나 사전에 없는 성분은 null이다.
     val referenceAmount: BigDecimal?,
     val referenceUnit: String?,
+    // 화면 표시 단위("μg"). mg 값을 이 단위로 바꿔 보여준다. null이면 받은 단위 그대로. 환산 표기(DFE·RAE)는 값의 단위에서 이어 붙인다.
+    val displayUnit: String?,
     // 1일 함량(단위 통일). 계산할 수 없으면 null이고 화면은 원문 값(amount/basis)을 보여준다.
     val dailyAmount: BigDecimal?,
     val dailyUnit: String?,
@@ -117,6 +119,7 @@ fun ProductIngredient.toDetailIngredient(ingredient: Ingredient?) = DetailIngred
     rawName = rawName,
     referenceAmount = ingredient?.referenceAmount,
     referenceUnit = ingredient?.referenceUnit,
+    displayUnit = ingredient?.displayUnit,
     dailyAmount = dailyAmount,
     dailyUnit = dailyUnit,
     referencePercent = ingredient?.referencePercent(dailyAmount, dailyUnit),

@@ -154,7 +154,19 @@ class ProductDetailApiTest(
             // 화면이 "기준 8.5mg"을 함께 보여준다. 사전에 없는 성분은 null
             jsonPath("$.data.ingredients[0].referenceAmount") { value(8.5) }
             jsonPath("$.data.ingredients[0].referenceUnit") { value("mg") }
+            jsonPath("$.data.ingredients[0].displayUnit") { value(null as Any?) }
             jsonPath("$.data.ingredients[3].referenceAmount") { value(null as Any?) }
+        }
+    }
+
+    @Test
+    fun `μg으로 보여줄 성분은 표시 단위를 함께 내려준다`() {
+        val id = product("A")
+        ingredient(id, "비타민 D", "0.01")
+
+        mvc.get("/api/products/$id").andExpect {
+            jsonPath("$.data.ingredients[0].displayUnit") { value("μg") }
+            jsonPath("$.data.ingredients[0].dailyUnit") { value("mg") }
         }
     }
 

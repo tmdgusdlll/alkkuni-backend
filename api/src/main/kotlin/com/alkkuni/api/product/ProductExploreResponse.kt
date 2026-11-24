@@ -26,6 +26,8 @@ data class ExploreIngredient(
     // 1일 기준값과 단위(성분 목록 API와 같음). 기준값이 없는 성분이나 사전에 없는 성분은 null이다.
     val referenceAmount: BigDecimal?,
     val referenceUnit: String?,
+    // 화면 표시 단위("μg"). mg 값을 이 단위로 바꿔 보여준다. null이면 받은 단위 그대로. 환산 표기(DFE·RAE)는 값의 단위에서 이어 붙인다.
+    val displayUnit: String?,
 )
 
 data class ProductExploreItem(
@@ -64,6 +66,7 @@ fun Ingredient.toExploreIngredient() = ExploreIngredient(
     defaultUnit = defaultUnit,
     referenceAmount = referenceAmount,
     referenceUnit = referenceUnit,
+    displayUnit = displayUnit,
 )
 
 fun ProductExploreRow.toExploreItem(brand: BrandRef?, categories: List<CategoryRef>, amounts: List<ExploreItemAmount>) = ProductExploreItem(

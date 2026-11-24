@@ -95,6 +95,8 @@ class ProductExploreApiTest(
                 value(contains(dfeHigh.toInt(), dfeLow.toInt(), mgHigh.toInt(), mgLow.toInt(), unknown.toInt()))
             }
             jsonPath("$.data.ingredients[0].defaultUnit") { value("mg DFE") }
+            // 저장은 mg DFE, 화면은 μg DFE로 보여준다(V22)
+            jsonPath("$.data.ingredients[0].displayUnit") { value("μg") }
             jsonPath("$.data.items[2].amounts[0].values[0].dailyUnit") { value("mg") }
         }
     }
@@ -297,6 +299,9 @@ class ProductExploreApiTest(
             // 기준 충족 필터를 켤 수 있는지 화면이 판단한다. 기준값이 없으면 null.
             jsonPath("$.data[?(@.name == '엽산')].referenceAmount") { value(contains(0.4)) }
             jsonPath("$.data[?(@.name == '엽산')].referenceUnit") { value(contains("mg DFE")) }
+            // 화면 표시 단위. 기준치를 mg으로 적는 성분은 null(저장 단위 그대로)
+            jsonPath("$.data[?(@.name == '엽산')].displayUnit") { value(contains("μg")) }
+            jsonPath("$.data[?(@.name == '아연')].displayUnit") { value(contains(null as Any?)) }
         }
     }
 
