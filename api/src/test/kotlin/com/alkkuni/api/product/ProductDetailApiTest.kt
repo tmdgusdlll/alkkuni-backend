@@ -160,6 +160,17 @@ class ProductDetailApiTest(
     }
 
     @Test
+    fun `μg으로 보여줄 성분은 표시 단위를 함께 내려준다`() {
+        val id = product("A")
+        ingredient(id, "비타민 D", "0.01")
+
+        mvc.get("/api/products/$id").andExpect {
+            jsonPath("$.data.ingredients[0].displayUnit") { value("μg") }
+            jsonPath("$.data.ingredients[0].dailyUnit") { value("mg") }
+        }
+    }
+
+    @Test
     fun `신고번호가 정확히 같은 회수만 붙는다`() {
         val id = product("메타그린 슬림업", reportNo = "20040017031282")
         recall("20040017031282", "메타그린 슬림업", "초산에틸 검출")

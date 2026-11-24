@@ -352,6 +352,17 @@ class ProductSearchApiTest(
     }
 
     @Test
+    fun `μg으로 보여줄 성분이면 표시 단위를 함께 내려준다`() {
+        // 1일 함량은 mg으로 저장하고(0.01mg) 화면이 displayUnit으로 바꿔 보여준다(V22)
+        product("데일리 디").also { ingredient(it, "비타민 D", "0.01") }
+
+        mvc.get("/api/products") { param("q", "비타민D") }.andExpect {
+            jsonPath("$.data.matchedIngredient.displayUnit") { value("μg") }
+            jsonPath("$.data.items[0].dailyUnit") { value("mg") }
+        }
+    }
+
+    @Test
     fun `검색어가 성분 이름이면 제품명 정확 일치를 앞에 두지 않는다`() {
         // 이름이 그냥 "아연"인 생산 0 제품보다 판매 추정 제품이 앞이다.
         val exactNoSale = product("아연", reportedOn = LocalDate.of(2024, 1, 1)).also { setProduction(it, 0) }
