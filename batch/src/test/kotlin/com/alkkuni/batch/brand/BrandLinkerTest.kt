@@ -82,6 +82,8 @@ class BrandLinkerTest(
         val ogicColon = product("7", "오직:프로바이오틱스")
         // 판매사를 확인하지 못해 보류했다
         val kidsRedGinseng = product("8", "웅진 어린이 홍삼")
+        // "오직"은 흔한 낱말이라 첫 단어일 때만 맞는다
+        val otherOgic = product("9", "오직홍삼 골드")
         linker.link()
         assertEquals("광동제약", brandOf(kwangdong))
         assertEquals("일양약품", brandOf(ilyang))
@@ -91,6 +93,7 @@ class BrandLinkerTest(
         assertEquals("오직", brandOf(ogicAlone))
         assertEquals("오직", brandOf(ogicColon))
         assertEquals(null, brandOf(kidsRedGinseng))
+        assertEquals(null, brandOf(otherOgic))
     }
 
     private fun product(reportNo: String, name: String): Long = jdbc.queryForObject(
