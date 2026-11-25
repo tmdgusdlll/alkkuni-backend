@@ -69,6 +69,30 @@ class BrandLinkerTest(
         assertEquals("유한양행", brandOf(yuhan))
     }
 
+    @Test
+    fun `회사 브랜드는 정식명으로 보이고 웅진은 웅진식품과 오직으로 나뉜다`() {
+        // V24. 줄임말 표기("광동")는 별칭으로 남아 그대로 연결된다
+        val kwangdong = product("1", "광동 관절팩트")
+        val ilyang = product("2", "[일양약품] 아연365")
+        val ildong = product("3", "일동 맥스 솔루션")
+        // 웅진 접두어에 웅진식품(알로에겔)과 웅진헬스원(오직)이 섞여 있었다. "웅진오직"이 "웅진"보다 길어 먼저 맞는다
+        val aloe = product("4", "웅진 알로에겔 플러스 프리미엄")
+        val ogic = product("5", "웅진 오직 뼈건강")
+        val ogicAlone = product("6", "오직 관절")
+        val ogicColon = product("7", "오직:프로바이오틱스")
+        // 판매사를 확인하지 못해 보류했다
+        val kidsRedGinseng = product("8", "웅진 어린이 홍삼")
+        linker.link()
+        assertEquals("광동제약", brandOf(kwangdong))
+        assertEquals("일양약품", brandOf(ilyang))
+        assertEquals("일동제약", brandOf(ildong))
+        assertEquals("웅진식품", brandOf(aloe))
+        assertEquals("오직", brandOf(ogic))
+        assertEquals("오직", brandOf(ogicAlone))
+        assertEquals("오직", brandOf(ogicColon))
+        assertEquals(null, brandOf(kidsRedGinseng))
+    }
+
     private fun product(reportNo: String, name: String): Long = jdbc.queryForObject(
         """
         INSERT INTO product (report_no, name, raw_material, parse_status, parser_version, status)
