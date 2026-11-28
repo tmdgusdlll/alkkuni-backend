@@ -106,15 +106,15 @@ class ProductDetailApiTest(
     @Test
     fun `이미지와 대표 구매 링크를 붙인다 - 상세 링크가 검색 링크보다 먼저, 같으면 최근 확인한 것`() {
         val id = product("아연").also { setImage(it, "https://image.example.com/a.jpg") }
-        link(id, "SEARCH", "https://www.coupang.com/np/search?q=a", "2026-11-21 10:00")
-        link(id, "DETAIL", "https://link.coupang.com/old", "2026-11-01 10:00")
-        link(id, "DETAIL", "https://link.coupang.com/new", "2026-11-20 10:00")
+        link(id, "SEARCH", "https://search.shopping.naver.com/search/all?query=a", "2026-11-21 10:00")
+        link(id, "DETAIL", "https://naver.me/old", "2026-11-01 10:00")
+        link(id, "DETAIL", "https://naver.me/new", "2026-11-20 10:00")
 
         mvc.get("/api/products/$id").andExpect {
             jsonPath("$.data.imageUrl") { value("https://image.example.com/a.jpg") }
-            jsonPath("$.data.purchaseLink.store") { value("COUPANG") }
+            jsonPath("$.data.purchaseLink.store") { value("NAVER") }
             jsonPath("$.data.purchaseLink.type") { value("DETAIL") }
-            jsonPath("$.data.purchaseLink.url") { value("https://link.coupang.com/new") }
+            jsonPath("$.data.purchaseLink.url") { value("https://naver.me/new") }
         }
     }
 
@@ -123,6 +123,8 @@ class ProductDetailApiTest(
         val id = product("아연")
 
         assertThrows<DataIntegrityViolationException> { link(id, "DETAIL", "javascript:alert(1)", "2026-11-21 10:00") }
+        // 쿠팡은 건강기능식품 링크 생성이 막혀 네이버로 바꿨다(V25, ADR-009)
+        assertThrows<DataIntegrityViolationException> { link(id, "DETAIL", "https://link.coupang.com/a", "2026-11-21 10:00", store = "COUPANG") }
         assertThrows<DataIntegrityViolationException> { setImage(id, "http://image.example.com/a.jpg") }
     }
 
@@ -226,10 +228,10 @@ class ProductDetailApiTest(
         jdbc.update("UPDATE product SET image_url = ? WHERE id = ?", url, productId)
     }
 
-    private fun link(productId: Long, type: String, url: String, checkedAt: String) {
+    private fun link(productId: Long, type: String, url: String, checkedAt: String, store: String = "NAVER") {
         jdbc.update(
-            "INSERT INTO shopping_link (product_id, store, type, url, checked_at) VALUES (?, 'COUPANG', ?, ?, ?::timestamp)",
-            productId, type, url, checkedAt,
+            "INSERT INTO shopping_link (product_id, store, type, url, checked_at) VALUES (?, ?, ?, ?, ?::timestamp)",
+            productId, store, type, url, checkedAt,
         )
     }
 
